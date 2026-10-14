@@ -10,7 +10,29 @@ import {
   CheckCircle2,
   ExternalLink,
   Search,
+  BookOpen,
+  Plus,
+  Trash2,
+  Star,
 } from "lucide-react";
+import { LogisticsTimeline, type ShipmentCheckpoint } from "@/components/LogisticsTimeline";
+import { REGIONS, type RegionCode } from "@/lib/constants";
+
+interface SavedAddressItem {
+  id: string;
+  label: string;
+  recipientName: string;
+  recipientPhone: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  region: string;
+  deliveryInstructions: string;
+  isDefault: boolean;
+}
 
 interface RecipientPortalData {
   user: {
@@ -24,6 +46,7 @@ interface RecipientPortalData {
     defaultPostalCode: string;
     defaultCountry: string;
   };
+  savedAddresses: SavedAddressItem[];
   gifts: {
     id: string;
     claimToken: string;
@@ -36,12 +59,31 @@ interface RecipientPortalData {
     company: { name: string; brandColor: string };
     campaign: { title: string; occasion: string };
     giftOrder?: {
+      id: string;
       orderType: string;
       fulfillmentStatus: string;
+      selectedVariant: string;
+      shippingName: string;
+      shippingAddressLine1: string;
+      shippingCity: string;
+      shippingCountry: string;
+      deliveryInstructions: string;
+      addressLocked: boolean;
+      swapCount: number;
       trackingCarrier: string;
       trackingNumber: string;
+      trackingUrl: string;
+      serviceLevel: string;
+      fulfillmentWarehouse: string;
+      packageWeightGrams: number;
+      estimatedDeliveryAt?: string | null;
+      exceptionNote?: string;
+      shipmentEvents?: ShipmentCheckpoint[];
       product?: {
+        id: string;
+        sku: string;
         title: string;
+        imageUrl: string;
         category: string;
         vendor: { businessName: string };
       } | null;
@@ -61,8 +103,24 @@ export default function RecipientPortalPage() {
   const [data, setData] = useState<RecipientPortalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [activeTab, setActiveTab] = useState<"gifts" | "addresses">("gifts");
   const [claimCode, setClaimCode] = useState("");
   const [lookupError, setLookupError] = useState("");
+  const [banner, setBanner] = useState("");
+
+  // New Address Book Entry Form
+  const [addrLabel, setAddrLabel] = useState("Home");
+  const [addrName, setAddrName] = useState("");
+  const [addrPhone, setAddrPhone] = useState("");
+  const [addrLine1, setAddrLine1] = useState("");
+  const [addrLine2, setAddrLine2] = useState("");
+  const [addrCity, setAddrCity] = useState("");
+  const [addrState, setAddrState] = useState("");
+  const [addrPostalCode, setAddrPostalCode] = useState("");
+  const [addrCountry, setAddrCountry] = useState("US");
+  const [addrRegion, setAddrRegion] = useState<RegionCode>("NA");
+  const [addrInstructions, setAddrInstructions] = useState("");
+  const [addrIsDefault, setAddrIsDefault] = useState(true);
 
   const loadRecipientPortal = useCallback(async () => {
     setLoading(true);
@@ -76,12 +134,15 @@ export default function RecipientPortalPage() {
         if (res.ok) {
           setUnauthorized(false);
           setData(json);
+          if (!addrName && json.user?.name) {
+            setAddrName(json.user.name);
+          }
         }
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addrName]);
 
   useEffect(() => {
     loadRecipientPortal();
@@ -112,10 +173,56 @@ export default function RecipientPortalPage() {
     }
   }
 
+  async function handleSaveAddress(e: React.FormEvent) {
+    e.preventDefault();
+    setBanner("");
+    const res = await fetch("/api/recipient/addresses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: addrLabel,
+        recipientName: addrName,
+        recipientPhone: addrPhone,
+        addressLine1: addrLine1,
+        addressLine2: addrLine2,
+        city: addrCity,
+        state: addrState,
+        postalCode: addrPostalCode,
+        country: addrCountry,
+        region: addrRegion,
+        deliveryInstructions: addrInstructions,
+        isDefault: addrIsDefault,
+      }),
+    });
+    const json = await res.json();
+    if (res.ok) {
+      setBanner("✓ Saved destination added to your Recipient Address Book.");
+      setAddrLine1("");
+      setAddrLine2("");
+      setAddrCity("");
+      setAddrState("");
+      setAddrPostalCode("");
+      setAddrInstructions("");
+      await loadRecipientPortal();
+    } else {
+      setLookupError(json.error || "Could not save address.");
+    }
+  }
+
+  async function handleDeleteAddress(addressId: string) {
+    const res = await fetch(`/api/recipient/addresses?addressId=${addressId}`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      setBanner("Address removed from your Address Book.");
+      await loadRecipientPortal();
+    }
+  }
+
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 text-center text-sm text-slate-500">
-        Loading Recipient Gift Hub...
+      <div className="mx-auto max-w-6xl px-4 py-16 text-center text-sm text-[#6E665E]">
+        Loading Snappy Atelier Recipient Gift & Delivery Suite...
       </div>
     );
   }
@@ -123,14 +230,14 @@ export default function RecipientPortalPage() {
   if (unauthorized || !data) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-14">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-2xs">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+        <div className="rounded-3xl border border-[#E6E0D6] bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#C85A32]/15 text-[#C85A32]">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Recipient Gift Hub & Claim Portal
+          <h1 className="font-serif text-3xl font-semibold text-[#141210]">
+            Recipient Gift & Delivery Hub
           </h1>
-          <p className="mt-2 text-xs text-slate-600">
+          <p className="mt-2 text-xs text-[#6E665E]">
             Enter a Snappy Gift Claim Code below, or sign in with 1 click as a seeded global recipient.
           </p>
 
@@ -140,11 +247,11 @@ export default function RecipientPortalPage() {
               value={claimCode}
               onChange={(e) => setClaimCode(e.target.value)}
               placeholder="Enter code (e.g. SNPY-NA100A)"
-              className="flex-1 rounded-xl border border-slate-200 px-3.5 py-2.5 font-mono text-xs uppercase"
+              className="flex-1 rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-4 py-2.5 font-mono text-xs uppercase"
             />
             <button
               type="submit"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-700"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#C85A32] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#b24d28]"
             >
               <Search className="h-3.5 w-3.5" />
               <span>Unwrap</span>
@@ -158,29 +265,29 @@ export default function RecipientPortalPage() {
             {[
               {
                 name: "Alex Rivera (NA)",
-                city: "Austin, US",
+                city: "Austin, US • Ready to Claim",
                 email: "alex.rivera@acmecloud.io",
               },
               {
                 name: "Elena Rostova (EMEA)",
-                city: "Amsterdam, NL",
+                city: "Amsterdam, NL • Pending Carrier",
                 email: "elena.rostova@acmecloud.io",
               },
               {
                 name: "Yuki Tanaka (APAC)",
-                city: "Tokyo, JP",
+                city: "Tokyo, JP • DHL Express In Transit",
                 email: "yuki.tanaka@acmecloud.io",
               },
             ].map((rec) => (
               <button
                 key={rec.email}
                 onClick={() => quickSignInRecipient(rec.email)}
-                className="rounded-xl border border-amber-200 bg-amber-50/50 p-3.5 transition hover:bg-amber-100/70"
+                className="rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 transition hover:border-[#C85A32]"
               >
-                <div className="text-xs font-bold text-slate-900">{rec.name}</div>
-                <div className="text-[11px] text-amber-800">{rec.city}</div>
-                <div className="mt-2 text-[11px] font-semibold text-amber-700">
-                  Open My Gifts →
+                <div className="text-xs font-bold text-[#141210]">{rec.name}</div>
+                <div className="mt-0.5 text-[11px] text-[#6E665E]">{rec.city}</div>
+                <div className="mt-2 text-[11px] font-bold text-[#C85A32]">
+                  Open Delivery Hub →
                 </div>
               </button>
             ))}
@@ -190,21 +297,23 @@ export default function RecipientPortalPage() {
     );
   }
 
-  const { user, gifts, metrics } = data;
+  const { user, savedAddresses, gifts, metrics } = data;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs sm:flex-row sm:items-center">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* Header Banner */}
+      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs lg:flex-row lg:items-center">
         <div>
-          <span className="rounded-md bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white">
-            RECIPIENT PORTAL
+          <span className="rounded-full bg-[#C85A32]/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#C85A32]">
+            Recipient Gift & Delivery Hub
           </span>
-          <h1 className="mt-2 text-2xl font-extrabold text-slate-900">
-            Welcome, {user.name}
+          <h1 className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
+            Welcome back, {user.name}
           </h1>
-          <p className="text-xs text-slate-600">
-            Default Delivery Region: <strong>{user.preferredRegion}</strong> • Saved City:{" "}
-            {user.defaultCity || "Not set"}, {user.defaultCountry}
+          <p className="mt-1 text-xs text-[#6E665E]">
+            Default Territory: <strong>{user.preferredRegion}</strong> • Saved City:{" "}
+            {user.defaultCity || "Not set"}, {user.defaultCountry} •{" "}
+            {savedAddresses?.length || 0} saved delivery destinations
           </p>
         </div>
 
@@ -213,119 +322,379 @@ export default function RecipientPortalPage() {
             type="text"
             value={claimCode}
             onChange={(e) => setClaimCode(e.target.value)}
-            placeholder="Have another claim code?"
-            className="rounded-xl border border-slate-200 px-3 py-2 font-mono text-xs uppercase"
+            placeholder="Redeem another code (SNPY-...)"
+            className="rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-4 py-2 font-mono text-xs uppercase"
           />
           <button
             type="submit"
-            className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700"
+            className="rounded-full bg-[#141210] px-5 py-2 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
           >
-            Redeem Code
+            Unwrap Code
           </button>
         </form>
       </div>
 
+      {banner && (
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-900">
+          {banner}
+        </div>
+      )}
+
       {/* KPIs */}
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Ready to Unwrap & Claim</span>
-            <Gift className="h-4 w-4 text-amber-600" />
+            <Gift className="h-4 w-4 text-[#C85A32]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {metrics.actionRequired}
           </div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Claimed & In Fulfillment</span>
-            <Truck className="h-4 w-4 text-indigo-600" />
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+            <span>In Carrier Fulfillment</span>
+            <Truck className="h-4 w-4 text-[#141210]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {metrics.inTransit}
           </div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Delivered / Donated</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <CheckCircle2 className="h-4 w-4 text-[#1F4D3A]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {metrics.completed}
           </div>
         </div>
       </div>
 
-      {/* Gifts List */}
-      <div className="mt-6 space-y-4">
-        {gifts.map((g) => {
-          const isUnclaimed = ["SENT", "OPENED"].includes(g.status);
-          return (
-            <div
-              key={g.id}
-              className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs lg:flex-row lg:items-center"
-            >
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
-                    {g.company.name} • {g.campaign.occasion}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      isUnclaimed
-                        ? "bg-amber-100 text-amber-800"
-                        : "bg-emerald-100 text-emerald-800"
-                    }`}
-                  >
-                    {g.status}
-                  </span>
-                  <span className="font-mono text-xs text-slate-500">
-                    Code: {g.claimCode}
-                  </span>
+      {/* Sub-navigation Tabs */}
+      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#E6E0D6] pb-3">
+        <button
+          onClick={() => setActiveTab("gifts")}
+          className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition ${
+            activeTab === "gifts"
+              ? "bg-[#141210] text-[#FAF8F5]"
+              : "bg-white text-[#575049] hover:bg-[#EFECE6]"
+          }`}
+        >
+          <Truck className="h-3.5 w-3.5" />
+          <span>My Gifts & Live Carrier Tracking ({gifts.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("addresses")}
+          className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition ${
+            activeTab === "addresses"
+              ? "bg-[#141210] text-[#FAF8F5]"
+              : "bg-white text-[#575049] hover:bg-[#EFECE6]"
+          }`}
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+          <span>Saved Delivery Address Book ({savedAddresses?.length || 0})</span>
+        </button>
+      </div>
+
+      {/* TAB 1: GIFTS & CARRIER LOGISTICS */}
+      {activeTab === "gifts" && (
+        <div className="mt-6 space-y-6">
+          {gifts.map((g) => {
+            const isUnclaimed = ["SENT", "OPENED"].includes(g.status);
+            return (
+              <div
+                key={g.id}
+                className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              >
+                <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                  <div className="flex items-start gap-4">
+                    {g.giftOrder?.product?.imageUrl && (
+                      <img
+                        src={g.giftOrder.product.imageUrl}
+                        alt={g.giftOrder.product.title}
+                        className="h-20 w-20 rounded-2xl border border-[#E6E0D6] object-cover"
+                      />
+                    )}
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#FAF8F5] border border-[#E6E0D6] px-3 py-0.5 text-xs font-bold text-[#141210]">
+                          {g.company.name} • {g.campaign.occasion}
+                        </span>
+                        <span
+                          className={`rounded-full px-3 py-0.5 text-xs font-bold ${
+                            isUnclaimed
+                              ? "bg-[#C85A32]/15 text-[#C85A32]"
+                              : "bg-[#1F4D3A]/15 text-[#1F4D3A]"
+                          }`}
+                        >
+                          {g.status}
+                        </span>
+                        <span className="font-mono text-xs text-[#6E665E]">
+                          Code: {g.claimCode}
+                        </span>
+                      </div>
+
+                      <p className="mt-2 font-serif text-base italic text-[#141210]">
+                        &ldquo;{g.personalMessage}&rdquo;
+                      </p>
+
+                      {g.giftOrder && (
+                        <p className="mt-1.5 text-xs text-[#6E665E]">
+                          Selected:{" "}
+                          <strong className="text-[#141210]">
+                            {g.giftOrder.product?.title ||
+                              (g.giftOrder.charity
+                                ? `Donated to ${g.giftOrder.charity.name}`
+                                : "Gift")}
+                          </strong>
+                          {g.giftOrder.selectedVariant && (
+                            <span> • {g.giftOrder.selectedVariant}</span>
+                          )}
+                          {g.giftOrder.shippingCity && (
+                            <span>
+                              {" "}
+                              • Destination: {g.giftOrder.shippingAddressLine1},{" "}
+                              {g.giftOrder.shippingCity}, {g.giftOrder.shippingCountry}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Link
+                      href={`/claim/${g.claimToken}`}
+                      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold transition ${
+                        isUnclaimed
+                          ? "bg-[#C85A32] text-white hover:bg-[#b24d28]"
+                          : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#141210] hover:border-[#141210]"
+                      }`}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span>
+                        {isUnclaimed
+                          ? "Unwrap & Choose Gift"
+                          : g.giftOrder?.addressLocked
+                          ? "View Live Tracking & Gratitude"
+                          : "Edit Delivery / Swap Gift / Track"}
+                      </span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
                 </div>
 
-                <p className="mt-2 text-sm font-medium text-slate-800">
-                  &ldquo;{g.personalMessage}&rdquo;
-                </p>
-
-                {g.giftOrder && (
-                  <p className="mt-1.5 text-xs text-slate-600">
-                    Selected:{" "}
-                    <strong>
-                      {g.giftOrder.product?.title ||
-                        (g.giftOrder.charity
-                          ? `Donated to ${g.giftOrder.charity.name}`
-                          : "Gift")}
-                    </strong>
-                    {g.giftOrder.trackingNumber && (
-                      <span className="ml-2 font-mono text-indigo-700">
-                        • Tracking: {g.giftOrder.trackingCarrier} {g.giftOrder.trackingNumber}
-                      </span>
-                    )}
-                  </p>
+                {/* Live 5-Stage Carrier Timeline for Claimed Physical Orders */}
+                {g.giftOrder && g.giftOrder.orderType === "PHYSICAL_GIFT" && (
+                  <div className="mt-5">
+                    <LogisticsTimeline
+                      fulfillmentStatus={g.giftOrder.fulfillmentStatus}
+                      trackingCarrier={g.giftOrder.trackingCarrier}
+                      trackingNumber={g.giftOrder.trackingNumber}
+                      trackingUrl={g.giftOrder.trackingUrl}
+                      serviceLevel={g.giftOrder.serviceLevel}
+                      fulfillmentWarehouse={g.giftOrder.fulfillmentWarehouse}
+                      packageWeightGrams={g.giftOrder.packageWeightGrams}
+                      estimatedDeliveryAt={g.giftOrder.estimatedDeliveryAt}
+                      addressLocked={g.giftOrder.addressLocked}
+                      exceptionNote={g.giftOrder.exceptionNote}
+                      swapCount={g.giftOrder.swapCount}
+                      selectedVariant={g.giftOrder.selectedVariant}
+                      shipmentEvents={g.giftOrder.shipmentEvents || []}
+                    />
+                  </div>
                 )}
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              <div>
-                <Link
-                  href={`/claim/${g.claimToken}`}
-                  className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition ${
-                    isUnclaimed
-                      ? "bg-amber-600 text-white hover:bg-amber-700"
-                      : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span>
-                    {isUnclaimed ? "Unwrap & Choose Gift" : "View Tracking & Thank-You Note"}
-                  </span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </Link>
+      {/* TAB 2: SAVED DELIVERY ADDRESS BOOK */}
+      {activeTab === "addresses" && (
+        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <form
+              onSubmit={handleSaveAddress}
+              className="space-y-3.5 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+            >
+              <div className="flex items-center gap-2 font-serif text-xl font-semibold text-[#141210]">
+                <Plus className="h-5 w-5 text-[#C85A32]" />
+                <span>Add Saved Delivery Destination</span>
               </div>
-            </div>
-          );
-        })}
-      </div>
+              <p className="text-xs text-[#6E665E]">
+                Store your Home, Office, or Travel addresses for 1-click autofill when unwrapping future gifts.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#575049]">
+                    Address Label
+                  </label>
+                  <select
+                    value={addrLabel}
+                    onChange={(e) => setAddrLabel(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
+                  >
+                    <option value="Home">Home</option>
+                    <option value="Office">Office</option>
+                    <option value="Studio">Studio</option>
+                    <option value="Travel">Travel</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#575049]">
+                    Global Territory
+                  </label>
+                  <select
+                    value={addrRegion}
+                    onChange={(e) => setAddrRegion(e.target.value as RegionCode)}
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
+                  >
+                    {REGIONS.map((r) => (
+                      <option key={r.code} value={r.code}>
+                        {r.code} — {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  required
+                  value={addrName}
+                  onChange={(e) => setAddrName(e.target.value)}
+                  placeholder="Recipient Full Name *"
+                  className="rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+                />
+                <input
+                  type="text"
+                  value={addrPhone}
+                  onChange={(e) => setAddrPhone(e.target.value)}
+                  placeholder="Mobile Phone (+1...)"
+                  className="rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+                />
+              </div>
+
+              <input
+                type="text"
+                required
+                value={addrLine1}
+                onChange={(e) => setAddrLine1(e.target.value)}
+                placeholder="Street Address Line 1 *"
+                className="w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+              />
+
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  type="text"
+                  required
+                  value={addrCity}
+                  onChange={(e) => setAddrCity(e.target.value)}
+                  placeholder="City *"
+                  className="rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+                />
+                <input
+                  type="text"
+                  required
+                  value={addrPostalCode}
+                  onChange={(e) => setAddrPostalCode(e.target.value)}
+                  placeholder="Postal Code *"
+                  className="rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+                />
+                <input
+                  type="text"
+                  required
+                  maxLength={2}
+                  value={addrCountry}
+                  onChange={(e) => setAddrCountry(e.target.value.toUpperCase())}
+                  placeholder="Country (US)"
+                  className="rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs uppercase"
+                />
+              </div>
+
+              <input
+                type="text"
+                value={addrInstructions}
+                onChange={(e) => setAddrInstructions(e.target.value)}
+                placeholder="Courier drop-off or concierge instructions"
+                className="w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
+              />
+
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#141210]">
+                <input
+                  type="checkbox"
+                  checked={addrIsDefault}
+                  onChange={(e) => setAddrIsDefault(e.target.checked)}
+                />
+                <span>Set as my default delivery destination</span>
+              </label>
+
+              <button
+                type="submit"
+                className="w-full rounded-full bg-[#141210] py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
+              >
+                Save Destination to Address Book
+              </button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-7 space-y-4">
+            {savedAddresses?.map((addr) => (
+              <div
+                key={addr.id}
+                className="flex items-start justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-[#141210] px-3 py-0.5 text-xs font-bold text-[#FAF8F5]">
+                      {addr.label}
+                    </span>
+                    <span className="rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-2.5 py-0.5 font-mono text-[11px] font-semibold text-[#575049]">
+                      {addr.region} • {addr.country}
+                    </span>
+                    {addr.isDefault && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#1F4D3A]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#1F4D3A]">
+                        <Star className="h-3 w-3" /> Default
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 text-sm font-bold text-[#141210]">
+                    {addr.recipientName}{" "}
+                    {addr.recipientPhone && (
+                      <span className="font-normal text-xs text-[#6E665E]">
+                        ({addr.recipientPhone})
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-[#575049]">
+                    {addr.addressLine1}
+                    {addr.addressLine2 ? `, ${addr.addressLine2}` : ""}, {addr.city}
+                    {addr.state ? `, ${addr.state}` : ""} {addr.postalCode}, {addr.country}
+                  </p>
+                  {addr.deliveryInstructions && (
+                    <p className="mt-1 text-[11px] italic text-[#6E665E]">
+                      Courier note: &ldquo;{addr.deliveryInstructions}&rdquo;
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleDeleteAddress(addr.id)}
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,9 @@ export async function getCorporateDashboard(companyId: string) {
                   vendor: {
                     select: { id: true, businessName: true, hqCountry: true },
                   },
+                  shipmentEvents: {
+                    orderBy: { occurredAt: "asc" },
+                  },
                 },
               },
             },
@@ -36,38 +39,45 @@ export async function getCorporateDashboard(companyId: string) {
     throw new Error("Corporate workspace not found.");
   }
 
-  const collections = await prisma.collection.findMany({
-    where: {
-      OR: [{ isGlobal: true }, { companyId: company.id }],
-    },
-    include: {
-      collectionProducts: {
-        include: {
-          product: {
-            include: {
-              vendor: {
-                select: { businessName: true, status: true },
+  const [collections, allActiveProducts, giftCategories] = await Promise.all([
+    prisma.collection.findMany({
+      where: {
+        OR: [{ isGlobal: true }, { companyId: company.id }],
+      },
+      include: {
+        collectionProducts: {
+          include: {
+            product: {
+              include: {
+                giftCategory: true,
+                vendor: {
+                  select: { businessName: true, status: true },
+                },
               },
             },
           },
         },
       },
-    },
-    orderBy: [{ isGlobal: "desc" }, { budgetTierCents: "asc" }],
-  });
-
-  const allActiveProducts = await prisma.product.findMany({
-    where: {
-      active: true,
-      vendor: { status: "APPROVED" },
-    },
-    include: {
-      vendor: {
-        select: { businessName: true, supportedRegions: true },
+      orderBy: [{ isGlobal: "desc" }, { budgetTierCents: "asc" }],
+    }),
+    prisma.product.findMany({
+      where: {
+        active: true,
+        vendor: { status: "APPROVED" },
       },
-    },
-    orderBy: { priceCents: "asc" },
-  });
+      include: {
+        giftCategory: true,
+        vendor: {
+          select: { businessName: true, supportedRegions: true },
+        },
+      },
+      orderBy: { priceCents: "asc" },
+    }),
+    prisma.giftCategory.findMany({
+      where: { active: true },
+      orderBy: { displayOrder: "asc" },
+    }),
+  ]);
 
   // Flatten all giftSends and enforce privacy rules on shipping addresses
   const allGiftSends = company.campaigns.flatMap((c) =>
@@ -117,6 +127,7 @@ export async function getCorporateDashboard(companyId: string) {
     company,
     collections,
     allActiveProducts,
+    giftCategories,
     allGiftSends,
     thankYouWall,
     metrics: {

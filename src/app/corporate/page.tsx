@@ -13,6 +13,7 @@ import {
   Layers,
   ExternalLink,
   Plus,
+  Tag,
 } from "lucide-react";
 import {
   BUDGET_TIERS,
@@ -21,6 +22,7 @@ import {
   formatCurrency,
   type RegionCode,
 } from "@/lib/constants";
+import { LogisticsTimeline, type ShipmentCheckpoint } from "@/components/LogisticsTimeline";
 
 interface CorporateDashboardData {
   company: {
@@ -69,15 +71,25 @@ interface CorporateDashboardData {
         title: string;
         priceCents: number;
         category: string;
+        imageUrl?: string;
         supportedRegions: string;
       };
     }[];
   }[];
+  giftCategories: {
+    id: string;
+    slug: string;
+    name: string;
+    tagline: string;
+    accentColor: string;
+  }[];
   allActiveProducts: {
     id: string;
+    sku: string;
     title: string;
     category: string;
     priceCents: number;
+    imageUrl: string;
     supportedRegions: string;
     vendor: { businessName: string };
   }[];
@@ -94,14 +106,25 @@ interface CorporateDashboardData {
     status: string;
     thankYouNote: string;
     giftOrder?: {
+      id: string;
       orderType: string;
       fulfillmentStatus: string;
+      selectedVariant: string;
       shippingAddressLine1: string;
       shippingCity: string;
       shippingCountry: string;
+      addressLocked: boolean;
+      swapCount: number;
       trackingCarrier: string;
       trackingNumber: string;
-      product?: { title: string } | null;
+      trackingUrl: string;
+      serviceLevel: string;
+      fulfillmentWarehouse: string;
+      packageWeightGrams: number;
+      estimatedDeliveryAt?: string | null;
+      exceptionNote?: string;
+      shipmentEvents?: ShipmentCheckpoint[];
+      product?: { title: string; imageUrl?: string; category?: string } | null;
       charity?: { name: string } | null;
     } | null;
   }[];
@@ -145,7 +168,7 @@ export default function CorporatePortalPage() {
   >("MANUAL");
   const [campAllowCharity, setCampAllowCharity] = useState(true);
   const [campMessage, setCampMessage] = useState(
-    "Thank you for your incredible impact this quarter! Unwrap your gift and pick whatever brings you joy."
+    "Thank you for your extraordinary craftsmanship and impact this quarter! Unwrap your curated Snappy Atelier gift and select whatever inspires you."
   );
   const [recipients, setRecipients] = useState<
     { recipientName: string; recipientEmail: string; preferredRegion: RegionCode }[]
@@ -166,6 +189,7 @@ export default function CorporatePortalPage() {
   const [colDescription, setColDescription] = useState("");
   const [colBudgetCents, setColBudgetCents] = useState(10000);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [colCategoryFilter, setColCategoryFilter] = useState<string>("ALL");
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -337,8 +361,8 @@ export default function CorporatePortalPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-slate-500">
-        Loading Corporate Gifting Workspace...
+      <div className="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-[#6E665E]">
+        Loading Corporate Gifting Studio...
       </div>
     );
   }
@@ -346,50 +370,50 @@ export default function CorporatePortalPage() {
   if (unauthorized || !data) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-14">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-2xs">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+        <div className="rounded-3xl border border-[#E6E0D6] bg-white p-8 text-center shadow-xs">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#141210] text-[#FAF8F5]">
             <Building2 className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Corporate Gifting Hub
+          <h1 className="font-serif text-3xl font-semibold text-[#141210]">
+            Corporate Gifting Studio
           </h1>
-          <p className="mt-2 text-xs text-slate-600">
-            Sign in to a seeded corporate workspace with 1 click or enroll a new company.
+          <p className="mt-2 text-xs text-[#6E665E]">
+            Sign in to a seeded corporate workspace with 1 click or enroll a new enterprise organization.
           </p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button
               onClick={() => quickSignInCorporate("sarah.chen@acmecloud.io")}
-              className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-left transition hover:bg-indigo-100/70"
+              className="flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 text-left transition hover:border-[#C85A32]"
             >
               <div>
-                <div className="text-xs font-bold text-slate-900">Acme Cloud Corp</div>
-                <div className="text-[11px] text-indigo-700">
+                <div className="text-xs font-bold text-[#141210]">Acme Cloud Corp</div>
+                <div className="text-[11px] text-[#6E665E]">
                   Sarah Chen • $12,450 Wallet Balance
                 </div>
               </div>
-              <span className="rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white">
+              <span className="rounded-full bg-[#141210] px-3 py-1 text-[11px] font-semibold text-[#FAF8F5]">
                 Enter →
               </span>
             </button>
             <button
               onClick={() => quickSignInCorporate("marcus.vance@novafintech.com")}
-              className="flex items-center justify-between rounded-xl border border-teal-200 bg-teal-50/60 p-4 text-left transition hover:bg-teal-100/70"
+              className="flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 text-left transition hover:border-[#1F4D3A]"
             >
               <div>
-                <div className="text-xs font-bold text-slate-900">Nova FinTech Global</div>
-                <div className="text-[11px] text-teal-700">
+                <div className="text-xs font-bold text-[#141210]">Nova FinTech Global</div>
+                <div className="text-[11px] text-[#6E665E]">
                   Marcus Vance • EMEA HQ
                 </div>
               </div>
-              <span className="rounded-lg bg-teal-600 px-2.5 py-1 text-[11px] font-semibold text-white">
+              <span className="rounded-full bg-[#1F4D3A] px-3 py-1 text-[11px] font-semibold text-white">
                 Enter →
               </span>
             </button>
           </div>
-          <div className="mt-6 border-t border-slate-100 pt-4">
+          <div className="mt-6 border-t border-[#EFECE6] pt-4">
             <Link
               href="/auth/corporate"
-              className="text-xs font-semibold text-indigo-600 hover:underline"
+              className="text-xs font-semibold text-[#C85A32] hover:underline"
             >
               Or enroll a new Corporate Customer organization →
             </Link>
@@ -399,29 +423,41 @@ export default function CorporatePortalPage() {
     );
   }
 
-  const { company, collections, allActiveProducts, allGiftSends, thankYouWall, metrics } = data;
+  const {
+    company,
+    collections,
+    giftCategories,
+    allActiveProducts,
+    allGiftSends,
+    thankYouWall,
+    metrics,
+  } = data;
+
+  const filteredMarketplaceProducts = allActiveProducts.filter(
+    (p) => colCategoryFilter === "ALL" || p.category === colCategoryFilter
+  );
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Workspace Header */}
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs sm:flex-row sm:items-center">
         <div className="flex items-center gap-4">
           <div
-            className="flex h-12 w-12 items-center justify-center rounded-2xl text-white font-extrabold text-lg shadow-xs"
-            style={{ backgroundColor: company.brandColor || "#4F46E5" }}
+            className="flex h-13 w-13 items-center justify-center rounded-2xl font-serif text-xl font-bold text-white shadow-xs"
+            style={{ backgroundColor: company.brandColor || "#141210" }}
           >
             {company.name.slice(0, 2).toUpperCase()}
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-indigo-600 px-2 py-0.5 text-[11px] font-bold text-white">
-                CORPORATE WORKSPACE
+              <span className="rounded-full bg-[#141210] px-3 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#FAF8F5]">
+                Corporate Gifting Studio
               </span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+              <span className="rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-2.5 py-0.5 text-xs font-semibold text-[#575049]">
                 Primary Region: {company.primaryRegion} • {company.sizeBand} Employees
               </span>
             </div>
-            <h1 className="mt-1 text-2xl font-extrabold text-slate-900">
+            <h1 className="mt-1 font-serif text-3xl font-semibold text-[#141210]">
               {company.name}
             </h1>
           </div>
@@ -430,10 +466,10 @@ export default function CorporatePortalPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => handleToggleAddressPrivacy(!company.hideRecipientAddress)}
-            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+            className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-xs font-bold transition ${
               company.hideRecipientAddress
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-slate-200 bg-slate-50 text-slate-600"
+                ? "border-[#1F4D3A]/30 bg-[#1F4D3A]/10 text-[#1F4D3A]"
+                : "border-[#E6E0D6] bg-[#FAF8F5] text-[#575049]"
             }`}
           >
             <Shield className="h-3.5 w-3.5" />
@@ -445,78 +481,78 @@ export default function CorporatePortalPage() {
       </div>
 
       {banner && (
-        <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-xs font-semibold text-indigo-900">
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-900">
           {banner}
         </div>
       )}
       {errorMsg && (
-        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
           {errorMsg}
         </div>
       )}
 
       {/* KPI Metrics */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Available Wallet Balance</span>
-            <Wallet className="h-4 w-4 text-indigo-600" />
+            <Wallet className="h-4 w-4 text-[#C85A32]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {formatCurrency(metrics.walletBalanceCents)}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-[#6E665E]">
             Ready for immediate campaign sends
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Escrow Held (Pending Claims)</span>
-            <Shield className="h-4 w-4 text-amber-600" />
+            <Shield className="h-4 w-4 text-[#1F4D3A]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {formatCurrency(metrics.escrowBalanceCents)}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            Auto-refunded if expired or lower-priced item chosen
+          <div className="mt-1 text-[11px] text-[#6E665E]">
+            Auto-refunded on lower-price choice or expiry
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Gifts Dispatched / Claimed</span>
-            <Gift className="h-4 w-4 text-emerald-600" />
+            <Gift className="h-4 w-4 text-[#C85A32]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {metrics.totalClaimed} / {metrics.totalSent}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-[#6E665E]">
             {metrics.claimRatePercent}% recipient claim conversion rate
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
             <span>Gratitude Wall Notes</span>
-            <MessageSquareHeart className="h-4 w-4 text-rose-500" />
+            <MessageSquareHeart className="h-4 w-4 text-[#C85A32]" />
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">
+          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
             {thankYouWall.length}
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-[#6E665E]">
             Direct recipient thank-you messages
           </div>
         </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#E6E0D6] pb-3">
         {[
           { id: "campaigns", label: "Launch Campaign & Send Gifts", icon: Send },
           {
             id: "sends",
-            label: `Sent Gifts & Claim Links (${allGiftSends.length})`,
+            label: `Sent Gifts & Live Logistics (${allGiftSends.length})`,
             icon: Gift,
           },
           {
@@ -541,13 +577,13 @@ export default function CorporatePortalPage() {
                   tab.id as "campaigns" | "sends" | "collections" | "wallet" | "gratitude"
                 )
               }
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition ${
+              className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition ${
                 active
-                  ? "bg-indigo-600 text-white shadow-2xs"
-                  : "bg-white text-slate-600 hover:bg-slate-100"
+                  ? "bg-[#141210] text-[#FAF8F5] shadow-xs"
+                  : "bg-white text-[#575049] hover:bg-[#EFECE6]"
               }`}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-3.5 w-3.5" />
               <span>{tab.label}</span>
             </button>
           );
@@ -560,20 +596,20 @@ export default function CorporatePortalPage() {
           <div className="lg:col-span-7">
             <form
               onSubmit={handleLaunchCampaign}
-              className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs"
+              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
             >
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-900">
+                <h2 className="font-serif text-xl font-semibold text-[#141210]">
                   Create Gifting Campaign & Dispatch Magic Links
                 </h2>
-                <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700">
+                <span className="rounded-full bg-[#1F4D3A]/10 px-3 py-1 text-[11px] font-bold text-[#1F4D3A]">
                   No Recipient Address Required
                 </span>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label className="block text-xs font-semibold text-[#575049]">
                     Campaign Title *
                   </label>
                   <input
@@ -582,17 +618,17 @@ export default function CorporatePortalPage() {
                     value={campTitle}
                     onChange={(e) => setCampTitle(e.target.value)}
                     placeholder="Q4 Global Engineering Recognition"
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label className="block text-xs font-semibold text-[#575049]">
                     Occasion
                   </label>
                   <select
                     value={campOccasion}
                     onChange={(e) => setCampOccasion(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                   >
                     {OCCASIONS.map((occ) => (
                       <option key={occ} value={occ}>
@@ -605,13 +641,13 @@ export default function CorporatePortalPage() {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label className="block text-xs font-semibold text-[#575049]">
                     Budget Tier per Recipient
                   </label>
                   <select
                     value={campBudgetCents}
                     onChange={(e) => setCampBudgetCents(Number(e.target.value))}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold"
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                   >
                     {BUDGET_TIERS.map((t) => (
                       <option key={t.cents} value={t.cents}>
@@ -621,13 +657,13 @@ export default function CorporatePortalPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label className="block text-xs font-semibold text-[#575049]">
                     Curated Gift Collection
                   </label>
                   <select
                     value={campCollectionId}
                     onChange={(e) => setCampCollectionId(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                   >
                     {collections.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -637,7 +673,7 @@ export default function CorporatePortalPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label className="block text-xs font-semibold text-[#575049]">
                     Workflow Mode
                   </label>
                   <select
@@ -647,7 +683,7 @@ export default function CorporatePortalPage() {
                         e.target.value as "MANUAL" | "BULK_CSV" | "AUTOMATED_MILESTONE"
                       )
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                   >
                     <option value="MANUAL">Direct Send</option>
                     <option value="BULK_CSV">Bulk Team Drop</option>
@@ -657,7 +693,7 @@ export default function CorporatePortalPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Personalized Greeting Card Message *
                 </label>
                 <textarea
@@ -665,16 +701,15 @@ export default function CorporatePortalPage() {
                   required
                   value={campMessage}
                   onChange={(e) => setCampMessage(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+              <label className="flex items-center gap-2 text-xs font-medium text-[#141210]">
                 <input
                   type="checkbox"
                   checked={campAllowCharity}
                   onChange={(e) => setCampAllowCharity(e.target.checked)}
-                  className="rounded border-slate-300 text-indigo-600"
                 />
                 <span>
                   Allow recipients to donate 100% of their gift allowance to verified charities
@@ -682,11 +717,11 @@ export default function CorporatePortalPage() {
               </label>
 
               {/* Recipients List */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-slate-800">
+                  <span className="text-xs font-bold text-[#141210]">
                     Recipients ({recipients.length}) • Escrow Required:{" "}
-                    <span className="text-indigo-700">
+                    <span className="text-[#C85A32]">
                       {formatCurrency(recipients.length * campBudgetCents)}
                     </span>
                   </span>
@@ -694,14 +729,14 @@ export default function CorporatePortalPage() {
                     <button
                       type="button"
                       onClick={populateGlobalTeamSample}
-                      className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      className="rounded-full border border-[#C85A32]/30 bg-[#C85A32]/10 px-3 py-1 text-[11px] font-bold text-[#C85A32] hover:bg-[#C85A32]/20"
                     >
                       + Load 4-Region Team (NA/EMEA/APAC/LATAM)
                     </button>
                     <button
                       type="button"
                       onClick={addRecipientRow}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                      className="rounded-full border border-[#E6E0D6] bg-white px-3 py-1 text-[11px] font-semibold text-[#141210] hover:border-[#141210]"
                     >
                       + Add Row
                     </button>
@@ -721,7 +756,7 @@ export default function CorporatePortalPage() {
                           next[idx] = { ...next[idx], recipientName: e.target.value };
                           setRecipients(next);
                         }}
-                        className="sm:col-span-4 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                        className="sm:col-span-4 rounded-xl border border-[#E6E0D6] bg-white px-3 py-1.5 text-xs"
                       />
                       <input
                         type="email"
@@ -733,7 +768,7 @@ export default function CorporatePortalPage() {
                           next[idx] = { ...next[idx], recipientEmail: e.target.value };
                           setRecipients(next);
                         }}
-                        className="sm:col-span-5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                        className="sm:col-span-5 rounded-xl border border-[#E6E0D6] bg-white px-3 py-1.5 text-xs"
                       />
                       <select
                         value={rec.preferredRegion}
@@ -745,7 +780,7 @@ export default function CorporatePortalPage() {
                           };
                           setRecipients(next);
                         }}
-                        className="sm:col-span-3 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold"
+                        className="sm:col-span-3 rounded-xl border border-[#E6E0D6] bg-white px-2 py-1.5 text-xs font-semibold"
                       >
                         {REGIONS.map((r) => (
                           <option key={r.code} value={r.code}>
@@ -760,7 +795,7 @@ export default function CorporatePortalPage() {
 
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#141210] px-6 py-3.5 text-xs font-bold text-[#FAF8F5] shadow-sm transition hover:bg-[#C85A32]"
               >
                 <Send className="h-4 w-4" />
                 <span>
@@ -772,36 +807,38 @@ export default function CorporatePortalPage() {
 
           {/* Right Column: Active Campaigns */}
           <div className="lg:col-span-5 space-y-4">
-            <h3 className="text-sm font-bold text-slate-900">
+            <h3 className="font-serif text-lg font-semibold text-[#141210]">
               Active Corporate Gifting Programs ({company.campaigns.length})
             </h3>
             {company.campaigns.map((c) => (
               <div
                 key={c.id}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
+                className="rounded-3xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
-                  <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                  <span className="rounded-full bg-[#FAF8F5] border border-[#E6E0D6] px-3 py-0.5 text-[11px] font-bold text-[#C85A32]">
                     {c.occasion}
                   </span>
-                  <span className="text-sm font-extrabold text-slate-900">
+                  <span className="font-serif text-lg font-semibold text-[#141210]">
                     {formatCurrency(c.budgetCents)} / gift
                   </span>
                 </div>
-                <h4 className="mt-2 text-base font-bold text-slate-900">{c.title}</h4>
-                <p className="mt-1 text-xs text-slate-500">
+                <h4 className="mt-2 font-serif text-lg font-semibold text-[#141210]">
+                  {c.title}
+                </h4>
+                <p className="mt-1 text-xs text-[#6E665E]">
                   Collection: {c.collection?.title || "All Regional Curated Items"} • Mode:{" "}
                   {c.triggerType}
                 </p>
-                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-xs">
-                  <span className="text-slate-600">
+                <div className="mt-3 flex items-center justify-between border-t border-[#EFECE6] pt-3 text-xs">
+                  <span className="text-[#575049]">
                     Total Sent: <strong>{c.giftSends.length}</strong>
                   </span>
                   <button
                     onClick={() => setActiveTab("sends")}
-                    className="font-semibold text-indigo-600 hover:underline"
+                    className="font-bold text-[#C85A32] hover:underline"
                   >
-                    View Claim Links →
+                    View Claim Links & Tracking →
                   </button>
                 </div>
               </div>
@@ -810,82 +847,110 @@ export default function CorporatePortalPage() {
         </div>
       )}
 
-      {/* TAB 2: Sent Gifts & Magic Claim Links */}
+      {/* TAB 2: Sent Gifts & Live Carrier Logistics */}
       {activeTab === "sends" && (
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 space-y-5">
           {allGiftSends.map((gs) => (
             <div
               key={gs.id}
-              className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs lg:flex-row lg:items-center"
+              className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
             >
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-bold text-white">
-                    {gs.preferredRegion}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      ["DELIVERED", "DONATED"].includes(gs.status)
-                        ? "bg-emerald-100 text-emerald-800"
-                        : ["CLAIMED", "PROCESSING", "SHIPPED"].includes(gs.status)
-                        ? "bg-indigo-100 text-indigo-800"
-                        : gs.status === "EXPIRED"
-                        ? "bg-rose-100 text-rose-800"
-                        : "bg-amber-100 text-amber-800"
-                    }`}
-                  >
-                    {gs.status}
-                  </span>
-                  <span className="font-mono text-xs font-bold text-slate-700">
-                    Code: {gs.claimCode}
-                  </span>
-                  <span className="text-xs text-slate-400">•</span>
-                  <span className="text-xs font-semibold text-slate-600">
-                    Budget: {formatCurrency(gs.budgetCents)}
-                  </span>
-                </div>
-
-                <h3 className="mt-1.5 text-sm font-bold text-slate-900">
-                  {gs.recipientName} ({gs.recipientEmail}) —{" "}
-                  <span className="font-normal text-slate-600">{gs.campaignTitle}</span>
-                </h3>
-
-                {gs.giftOrder && (
-                  <div className="mt-1 text-xs text-slate-600">
-                    <span>
-                      Redeemed:{" "}
-                      <strong>
-                        {gs.giftOrder.product?.title ||
-                          (gs.giftOrder.charity
-                            ? `Charitable Donation (${gs.giftOrder.charity.name})`
-                            : "Gift")}
-                      </strong>
-                    </span>
-                    {gs.giftOrder.orderType === "PHYSICAL_GIFT" && (
-                      <span className="ml-2 text-slate-500">
-                        • Destination: {gs.giftOrder.shippingAddressLine1},{" "}
-                        {gs.giftOrder.shippingCity} ({gs.giftOrder.shippingCountry})
+              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                <div className="flex items-start gap-4">
+                  {gs.giftOrder?.product?.imageUrl && (
+                    <img
+                      src={gs.giftOrder.product.imageUrl}
+                      alt={gs.giftOrder.product.title}
+                      className="h-18 w-18 rounded-2xl border border-[#E6E0D6] object-cover"
+                    />
+                  )}
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-[#141210] px-2.5 py-0.5 font-mono text-[11px] font-bold text-[#FAF8F5]">
+                        {gs.preferredRegion}
                       </span>
-                    )}
-                    {gs.giftOrder.trackingNumber && (
-                      <span className="ml-2 font-mono text-indigo-700">
-                        • Tracking: {gs.giftOrder.trackingCarrier} {gs.giftOrder.trackingNumber}
+                      <span
+                        className={`rounded-full px-3 py-0.5 text-xs font-bold ${
+                          ["DELIVERED", "DONATED"].includes(gs.status)
+                            ? "bg-[#1F4D3A]/15 text-[#1F4D3A]"
+                            : ["CLAIMED", "PROCESSING", "SHIPPED"].includes(gs.status)
+                            ? "bg-[#C85A32]/15 text-[#C85A32]"
+                            : gs.status === "EXPIRED"
+                            ? "bg-rose-100 text-rose-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {gs.status}
                       </span>
+                      <span className="font-mono text-xs font-bold text-[#575049]">
+                        Code: {gs.claimCode}
+                      </span>
+                      <span className="text-xs font-semibold text-[#6E665E]">
+                        • Budget: {formatCurrency(gs.budgetCents)}
+                      </span>
+                    </div>
+
+                    <h3 className="mt-1.5 font-serif text-lg font-semibold text-[#141210]">
+                      {gs.recipientName} ({gs.recipientEmail}) —{" "}
+                      <span className="font-sans text-xs font-normal text-[#6E665E]">
+                        {gs.campaignTitle}
+                      </span>
+                    </h3>
+
+                    {gs.giftOrder && (
+                      <div className="mt-1 text-xs text-[#575049]">
+                        <span>
+                          Redeemed:{" "}
+                          <strong className="text-[#141210]">
+                            {gs.giftOrder.product?.title ||
+                              (gs.giftOrder.charity
+                                ? `Charitable Donation (${gs.giftOrder.charity.name})`
+                                : "Gift")}
+                          </strong>
+                        </span>
+                        {gs.giftOrder.orderType === "PHYSICAL_GIFT" && (
+                          <span className="ml-2 text-[#6E665E]">
+                            • Destination: {gs.giftOrder.shippingAddressLine1},{" "}
+                            {gs.giftOrder.shippingCity} ({gs.giftOrder.shippingCountry})
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/claim/${gs.claimToken}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-4 py-2 text-xs font-bold text-[#141210] transition hover:border-[#141210]"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-[#C85A32]" />
+                    <span>Open Recipient Claim Link</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/claim/${gs.claimToken}`}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 transition hover:bg-indigo-100"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Open Recipient Claim Link</span>
-                  <ExternalLink className="h-3 w-3" />
-                </Link>
-              </div>
+              {gs.giftOrder && gs.giftOrder.orderType === "PHYSICAL_GIFT" && (
+                <div className="mt-4">
+                  <LogisticsTimeline
+                    fulfillmentStatus={gs.giftOrder.fulfillmentStatus}
+                    trackingCarrier={gs.giftOrder.trackingCarrier}
+                    trackingNumber={gs.giftOrder.trackingNumber}
+                    trackingUrl={gs.giftOrder.trackingUrl}
+                    serviceLevel={gs.giftOrder.serviceLevel}
+                    fulfillmentWarehouse={gs.giftOrder.fulfillmentWarehouse}
+                    packageWeightGrams={gs.giftOrder.packageWeightGrams}
+                    estimatedDeliveryAt={gs.giftOrder.estimatedDeliveryAt}
+                    addressLocked={gs.giftOrder.addressLocked}
+                    exceptionNote={gs.giftOrder.exceptionNote}
+                    swapCount={gs.giftOrder.swapCount}
+                    selectedVariant={gs.giftOrder.selectedVariant}
+                    shipmentEvents={gs.giftOrder.shipmentEvents || []}
+                    compact
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -897,14 +962,14 @@ export default function CorporatePortalPage() {
           <div className="lg:col-span-5">
             <form
               onSubmit={handleCreateCustomCollection}
-              className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs"
+              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Plus className="h-4 w-4 text-indigo-600" />
+              <div className="flex items-center gap-2 font-serif text-lg font-semibold text-[#141210]">
+                <Plus className="h-4 w-4 text-[#C85A32]" />
                 <span>Build Custom Company Collection</span>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Collection Name *
                 </label>
                 <input
@@ -913,17 +978,17 @@ export default function CorporatePortalPage() {
                   value={colTitle}
                   onChange={(e) => setColTitle(e.target.value)}
                   placeholder="Acme President's Club Selection"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Budget Ceiling Tier
                 </label>
                 <select
                   value={colBudgetCents}
                   onChange={(e) => setColBudgetCents(Number(e.target.value))}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                 >
                   {BUDGET_TIERS.map((t) => (
                     <option key={t.cents} value={t.cents}>
@@ -933,7 +998,7 @@ export default function CorporatePortalPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Description *
                 </label>
                 <input
@@ -942,21 +1007,52 @@ export default function CorporatePortalPage() {
                   value={colDescription}
                   onChange={(e) => setColDescription(e.target.value)}
                   placeholder="Handpicked items for our global engineering & sales teams"
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                 />
               </div>
 
+              {/* Category Filter inside Collection Builder */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Select Marketplace Products ({selectedProductIds.length} chosen) *
-                </label>
-                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">
-                  {allActiveProducts.map((p) => {
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[#575049]">
+                    Filter by Category ({selectedProductIds.length} chosen) *
+                  </span>
+                </div>
+                <div className="mb-2 flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setColCategoryFilter("ALL")}
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                      colCategoryFilter === "ALL"
+                        ? "bg-[#141210] text-[#FAF8F5]"
+                        : "bg-[#FAF8F5] text-[#575049]"
+                    }`}
+                  >
+                    All
+                  </button>
+                  {giftCategories?.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setColCategoryFilter(cat.name)}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                        colCategoryFilter === cat.name
+                          ? "bg-[#C85A32] text-white"
+                          : "bg-[#FAF8F5] text-[#575049]"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-2.5">
+                  {filteredMarketplaceProducts.map((p) => {
                     const checked = selectedProductIds.includes(p.id);
                     return (
                       <label
                         key={p.id}
-                        className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50"
+                        className="flex cursor-pointer items-center justify-between rounded-xl px-2 py-1.5 text-xs hover:bg-white"
                       >
                         <div className="flex items-center gap-2">
                           <input
@@ -970,9 +1066,10 @@ export default function CorporatePortalPage() {
                               )
                             }
                           />
-                          <span className="font-medium text-slate-800">{p.title}</span>
+                          <span className="font-semibold text-[#141210]">{p.title}</span>
+                          <span className="text-[10px] text-[#C85A32]">({p.category})</span>
                         </div>
-                        <span className="text-[11px] font-bold text-slate-500">
+                        <span className="font-mono text-[11px] font-bold text-[#6E665E]">
                           {formatCurrency(p.priceCents)} • {p.supportedRegions}
                         </span>
                       </label>
@@ -983,7 +1080,7 @@ export default function CorporatePortalPage() {
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"
+                className="w-full rounded-full bg-[#141210] py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
               >
                 Save Custom Collection
               </button>
@@ -994,30 +1091,33 @@ export default function CorporatePortalPage() {
             {collections.map((col) => (
               <div
                 key={col.id}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
+                className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
               >
                 <div className="flex items-center justify-between">
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                    className={`rounded-full px-3 py-0.5 text-[11px] font-bold ${
                       col.isGlobal
-                        ? "bg-violet-50 text-violet-700"
-                        : "bg-indigo-50 text-indigo-700"
+                        ? "bg-[#141210] text-[#FAF8F5]"
+                        : "bg-[#C85A32]/15 text-[#C85A32]"
                     }`}
                   >
-                    {col.isGlobal ? "Snappy Curated Collection" : "Custom Company Collection"}
+                    {col.isGlobal ? "Snappy Atelier Collection" : "Custom Company Collection"}
                   </span>
-                  <span className="text-sm font-extrabold text-slate-900">
+                  <span className="font-serif text-lg font-semibold text-[#141210]">
                     Up to {formatCurrency(col.budgetTierCents)}
                   </span>
                 </div>
-                <h3 className="mt-2 text-base font-bold text-slate-900">{col.title}</h3>
-                <p className="mt-1 text-xs text-slate-600">{col.description}</p>
+                <h3 className="mt-2 font-serif text-xl font-semibold text-[#141210]">
+                  {col.title}
+                </h3>
+                <p className="mt-1 text-xs text-[#6E665E]">{col.description}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {col.collectionProducts.map((cp) => (
                     <span
                       key={cp.product.id}
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700"
+                      className="inline-flex items-center gap-1 rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-1 text-[11px] font-medium text-[#141210]"
                     >
+                      <Tag className="h-3 w-3 text-[#C85A32]" />
                       {cp.product.title} ({formatCurrency(cp.product.priceCents)} •{" "}
                       {cp.product.supportedRegions})
                     </span>
@@ -1035,17 +1135,17 @@ export default function CorporatePortalPage() {
           <div className="lg:col-span-5">
             <form
               onSubmit={handleWalletDeposit}
-              className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs"
+              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
             >
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="font-serif text-xl font-semibold text-[#141210]">
                 Fund Corporate Gifting Balance
               </h3>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-[#6E665E]">
                 Funds are held in your corporate wallet and moved to escrow when gifts are sent. Unused balances from lower-priced selections or expired links automatically return here.
               </p>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Deposit Amount (USD $)
                 </label>
                 <input
@@ -1055,25 +1155,25 @@ export default function CorporatePortalPage() {
                   required
                   value={depositDollars}
                   onChange={(e) => setDepositDollars(Number(e.target.value))}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-bold"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-sm font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-[#575049]">
                   Cost Center / Accounting Note
                 </label>
                 <input
                   type="text"
                   value={depositNote}
                   onChange={(e) => setDepositNote(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs"
+                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white hover:bg-indigo-700"
+                className="w-full rounded-full bg-[#141210] py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
               >
                 Add {formatCurrency(Math.round(Number(depositDollars) * 100))} to Wallet
               </button>
@@ -1081,33 +1181,35 @@ export default function CorporatePortalPage() {
           </div>
 
           <div className="lg:col-span-7">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
-              <h3 className="text-base font-bold text-slate-900">
+            <div className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs">
+              <h3 className="font-serif text-xl font-semibold text-[#141210]">
                 Wallet & Escrow Ledger History
               </h3>
               <div className="mt-4 space-y-2.5">
                 {company.walletTransactions.map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 text-xs"
+                    className="flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-3.5 text-xs"
                   >
                     <div>
-                      <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-800">
+                      <span className="rounded-md bg-[#141210] px-2 py-0.5 font-mono text-[10px] font-bold text-[#FAF8F5]">
                         {tx.type}
                       </span>
-                      <p className="mt-1 font-semibold text-slate-900">{tx.note}</p>
-                      <p className="text-[11px] text-slate-400">Ref: {tx.referenceId}</p>
+                      <p className="mt-1 font-semibold text-[#141210]">{tx.note}</p>
+                      <p className="font-mono text-[11px] text-[#6E665E]">
+                        Ref: {tx.referenceId}
+                      </p>
                     </div>
                     <div className="text-right">
                       <div
-                        className={`text-sm font-extrabold ${
-                          tx.amountCents >= 0 ? "text-emerald-600" : "text-amber-700"
+                        className={`font-serif text-base font-bold ${
+                          tx.amountCents >= 0 ? "text-[#1F4D3A]" : "text-[#C85A32]"
                         }`}
                       >
                         {tx.amountCents >= 0 ? "+" : ""}
                         {formatCurrency(tx.amountCents)}
                       </div>
-                      <div className="text-[11px] text-slate-500">
+                      <div className="text-[11px] text-[#6E665E]">
                         Wallet: {formatCurrency(tx.balanceAfter)} • Escrow:{" "}
                         {formatCurrency(tx.escrowAfter)}
                       </div>
@@ -1126,24 +1228,24 @@ export default function CorporatePortalPage() {
           {thankYouWall.map((note) => (
             <div
               key={note.id}
-              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
+              className="flex flex-col justify-between rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">
+                  <span className="rounded-full bg-[#C85A32]/15 px-3 py-0.5 text-[11px] font-bold text-[#C85A32]">
                     {note.occasion}
                   </span>
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                  <span className="rounded-full bg-[#FAF8F5] border border-[#E6E0D6] px-2.5 py-0.5 font-mono text-[10px] font-bold text-[#575049]">
                     {note.preferredRegion}
                   </span>
                 </div>
-                <p className="mt-3 text-sm italic leading-relaxed text-slate-800">
+                <p className="mt-3 font-serif text-base italic leading-relaxed text-[#141210]">
                   &ldquo;{note.thankYouNote}&rdquo;
                 </p>
               </div>
-              <div className="mt-4 border-t border-slate-100 pt-3 text-xs">
-                <div className="font-bold text-slate-900">{note.recipientName}</div>
-                <div className="text-[11px] text-slate-500">
+              <div className="mt-4 border-t border-[#EFECE6] pt-3 text-xs">
+                <div className="font-bold text-[#141210]">{note.recipientName}</div>
+                <div className="text-[11px] text-[#6E665E]">
                   Chose: {note.giftTitle}
                 </div>
               </div>

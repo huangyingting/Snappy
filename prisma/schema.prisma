@@ -49,26 +49,27 @@ model Vendor {
 }
 
 model User {
-  id                  String     @id @default(cuid())
-  email               String     @unique
+  id                  String             @id @default(cuid())
+  email               String             @unique
   passwordHash        String
   name                String
-  role                String     // ADMIN | CORPORATE | VENDOR | RECIPIENT
-  jobTitle            String     @default("")
-  preferredRegion     String     @default("NA")
-  defaultAddressLine1 String     @default("")
-  defaultCity         String     @default("")
-  defaultState        String     @default("")
-  defaultPostalCode   String     @default("")
-  defaultCountry      String     @default("US")
+  role                String             // ADMIN | CORPORATE | VENDOR | RECIPIENT
+  jobTitle            String             @default("")
+  preferredRegion     String             @default("NA")
+  defaultAddressLine1 String             @default("")
+  defaultCity         String             @default("")
+  defaultState        String             @default("")
+  defaultPostalCode   String             @default("")
+  defaultCountry      String             @default("US")
   companyId           String?
-  company             Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  company             Company?           @relation(fields: [companyId], references: [id], onDelete: SetNull)
   vendorId            String?
-  vendor              Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  vendor              Vendor?            @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
   campaignsCreated    Campaign[]
   receivedGifts       GiftSend[]
+  savedAddresses      RecipientAddress[]
   auditLogs           AuditLog[]
 
   @@index([role])
@@ -76,11 +77,54 @@ model User {
   @@index([vendorId])
 }
 
+model RecipientAddress {
+  id                   String   @id @default(cuid())
+  userId               String?
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipientEmail       String
+  label                String   @default("Home") // Home | Office | Studio | Family
+  recipientName        String
+  phone                String   @default("")
+  addressLine1         String
+  addressLine2         String   @default("")
+  city                 String
+  state                String   @default("")
+  postalCode           String
+  country              String   @default("US")
+  region               String   @default("NA") // NA | EMEA | APAC | LATAM
+  deliveryInstructions String   @default("")
+  isDefault            Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([recipientEmail])
+  @@index([userId])
+}
+
+model GiftCategory {
+  id           String    @id @default(cuid())
+  slug         String    @unique
+  name         String
+  headline     String    @default("")
+  description  String    @default("")
+  icon         String    @default("Sparkles")
+  accentColor  String    @default("#6366F1")
+  heroImageUrl String    @default("")
+  displayOrder Int       @default(0)
+  isFeatured   Boolean   @default(true)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  products     Product[]
+
+  @@index([displayOrder, active])
+}
+
 model WalletTransaction {
   id           String   @id @default(cuid())
   companyId    String
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  type         String   // DEPOSIT | ESCROW_HOLD | ESCROW_SURPLUS_REFUND | EXPIRED_GIFT_REFUND
+  type         String   // DEPOSIT | ESCROW_HOLD | ESCROW_SURPLUS_REFUND | EXPIRED_GIFT_REFUND | GIFT_SWAP_ADJUSTMENT
   amountCents  Int
   balanceAfter Int
   escrowAfter  Int
@@ -95,15 +139,23 @@ model Product {
   id                 String              @id @default(cuid())
   vendorId           String
   vendor             Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  categoryId         String?
+  giftCategory       GiftCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sku                String              @default("")
   title              String
   description        String
-  category           String              // Tech | Wellness | Gourmet | Home & Living | Apparel & Swag | Experiences
+  category           String              // Audio & Tech | Coffee & Gourmet | Wellness & Spa | Home & Living | Executive Travel | Eco & Impact
+  merchandisingBadge String              @default("") // Editor's Pick | Bestseller | Carbon Neutral | Artisan Made | New Arrival
+  tagsJson           String              @default("[]")
+  variantsJson       String              @default("[]")
+  specificationsJson String              @default("{}")
   priceCents         Int
   wholesaleCostCents Int
   imageUrl           String
   stockQuantity      Int                 @default(50)
   supportedRegions   String              @default("NA") // Comma-separated: NA,EMEA,APAC,LATAM
   isFeatured         Boolean             @default(false)
+  status             String              @default("ACTIVE") // ACTIVE | OUT_OF_STOCK | ARCHIVED
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -111,6 +163,7 @@ model Product {
   giftOrders         GiftOrder[]
 
   @@index([vendorId])
+  @@index([categoryId])
   @@index([priceCents, active])
 }
 
@@ -205,35 +258,62 @@ model GiftSend {
 }
 
 model GiftOrder {
-  id                   String    @id @default(cuid())
-  giftSendId           String    @unique
-  giftSend             GiftSend  @relation(fields: [giftSendId], references: [id], onDelete: Cascade)
+  id                   String          @id @default(cuid())
+  giftSendId           String          @unique
+  giftSend             GiftSend        @relation(fields: [giftSendId], references: [id], onDelete: Cascade)
   productId            String?
-  product              Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  product              Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
   vendorId             String?
-  vendor               Vendor?   @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendor               Vendor?         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   charityId            String?
-  charity              Charity?  @relation(fields: [charityId], references: [id], onDelete: SetNull)
-  orderType            String    // PHYSICAL_GIFT | CHARITY_DONATION
+  charity              Charity?        @relation(fields: [charityId], references: [id], onDelete: SetNull)
+  orderType            String          // PHYSICAL_GIFT | CHARITY_DONATION
   retailAmountCents    Int
-  vendorPayoutCents    Int       @default(0)
-  platformFeeCents     Int       @default(0)
-  recipientRegion      String    @default("NA")
-  shippingName         String    @default("")
-  shippingAddressLine1 String    @default("")
-  shippingCity         String    @default("")
-  shippingState        String    @default("")
-  shippingPostalCode   String    @default("")
-  shippingCountry      String    @default("")
-  trackingCarrier      String    @default("")
-  trackingNumber       String    @default("")
-  fulfillmentStatus    String    @default("PENDING_VENDOR") // PENDING_VENDOR | PROCESSING | SHIPPED | DELIVERED | COMPLETED
+  vendorPayoutCents    Int             @default(0)
+  platformFeeCents     Int             @default(0)
+  recipientRegion      String          @default("NA")
+  shippingName         String          @default("")
+  shippingPhone        String          @default("")
+  shippingAddressLine1 String          @default("")
+  shippingAddressLine2 String          @default("")
+  shippingCity         String          @default("")
+  shippingState        String          @default("")
+  shippingPostalCode   String          @default("")
+  shippingCountry      String          @default("")
+  deliveryInstructions String          @default("")
+  selectedVariant      String          @default("")
+  trackingCarrier      String          @default("")
+  trackingNumber       String          @default("")
+  trackingUrl          String          @default("")
+  serviceLevel         String          @default("International Priority")
+  fulfillmentWarehouse String          @default("Newark, NJ (NA-East Hub)")
+  packageWeightGrams   Int             @default(650)
+  estimatedDeliveryAt  DateTime?
+  addressLocked        Boolean         @default(false)
+  exceptionNote        String          @default("")
+  swapCount            Int             @default(0)
+  fulfillmentStatus    String          @default("PENDING_VENDOR") // PENDING_VENDOR | PROCESSING | SHIPPED | OUT_FOR_DELIVERY | DELIVERED | COMPLETED | EXCEPTION
   shippedAt            DateTime?
   deliveredAt          DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  shipmentEvents       ShipmentEvent[]
 
   @@index([vendorId, fulfillmentStatus])
+}
+
+model ShipmentEvent {
+  id          String    @id @default(cuid())
+  giftOrderId String
+  giftOrder   GiftOrder @relation(fields: [giftOrderId], references: [id], onDelete: Cascade)
+  stage       String    // ORDER_CONFIRMED | WAREHOUSE_ALLOCATED | PACKED_QA | CARRIER_PICKED_UP | IN_TRANSIT_HUB | CUSTOMS_CLEARED | OUT_FOR_DELIVERY | DELIVERED | ADDRESS_UPDATED | GIFT_SWAPPED | EXCEPTION
+  title       String
+  description String    @default("")
+  location    String    @default("")
+  actorRole   String    @default("SYSTEM")
+  occurredAt  DateTime  @default(now())
+
+  @@index([giftOrderId, occurredAt])
 }
 
 model AuditLog {

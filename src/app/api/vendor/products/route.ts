@@ -23,11 +23,22 @@ export async function POST(request: Request) {
       title: body.title,
       description: body.description,
       category: body.category || "Tech",
+      categoryId: body.categoryId || null,
+      sku: body.sku,
+      merchandisingBadge: body.merchandisingBadge,
+      tags: Array.isArray(body.tags) ? body.tags : undefined,
+      variants: Array.isArray(body.variants) ? body.variants : undefined,
+      specifications:
+        body.specifications && typeof body.specifications === "object"
+          ? body.specifications
+          : undefined,
       priceCents: Number(body.priceCents),
       wholesaleCostCents: body.wholesaleCostCents ? Number(body.wholesaleCostCents) : undefined,
       imageUrl: body.imageUrl,
       stockQuantity: Number(body.stockQuantity ?? 25),
       supportedRegions: Array.isArray(body.supportedRegions) ? body.supportedRegions : [],
+      isFeatured: Boolean(body.isFeatured),
+      status: body.status || "ACTIVE",
       collectionIds: Array.isArray(body.collectionIds) ? body.collectionIds : undefined,
     });
 

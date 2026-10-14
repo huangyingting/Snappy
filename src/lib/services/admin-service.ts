@@ -5,6 +5,7 @@ export async function getAdminDashboard() {
     companies,
     vendors,
     products,
+    giftCategories,
     collections,
     charities,
     giftSends,
@@ -25,9 +26,16 @@ export async function getAdminDashboard() {
     }),
     prisma.product.findMany({
       include: {
+        giftCategory: true,
         vendor: { select: { businessName: true, status: true } },
       },
       orderBy: { priceCents: "asc" },
+    }),
+    prisma.giftCategory.findMany({
+      include: {
+        _count: { select: { products: true } },
+      },
+      orderBy: { displayOrder: "asc" },
     }),
     prisma.collection.findMany({
       where: { isGlobal: true },
@@ -46,7 +54,25 @@ export async function getAdminDashboard() {
       },
       orderBy: { createdAt: "desc" },
     }),
-    prisma.giftOrder.findMany(),
+    prisma.giftOrder.findMany({
+      include: {
+        product: { select: { title: true, sku: true, imageUrl: true } },
+        vendor: { select: { businessName: true, hqCountry: true } },
+        charity: { select: { name: true } },
+        giftSend: {
+          select: {
+            recipientName: true,
+            recipientEmail: true,
+            claimCode: true,
+            company: { select: { name: true } },
+          },
+        },
+        shipmentEvents: {
+          orderBy: { occurredAt: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.auditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 30,
@@ -69,8 +95,10 @@ export async function getAdminDashboard() {
     companies,
     vendors,
     products,
+    giftCategories,
     collections,
     charities,
+    giftOrders,
     expiredUnclaimedGifts,
     auditLogs,
     metrics: {
@@ -85,6 +113,95 @@ export async function getAdminDashboard() {
       expiredUnclaimedCount: expiredUnclaimedGifts.length,
     },
   };
+}
+
+export async function upsertGiftCategory(input: {
+  id?: string;
+  name: string;
+  slug?: string;
+  headline?: string;
+  tagline?: string;
+  description?: string;
+  icon?: string;
+  accentColor?: string;
+  heroImageUrl?: string;
+  displayOrder?: number;
+  sortOrder?: number;
+  isFeatured?: boolean;
+  active?: boolean;
+  actorUserId?: string;
+}) {
+  const cleanName = input.name.trim();
+  const cleanHeadline = (input.headline || input.tagline || cleanName).trim();
+  const cleanDescription = (input.description || cleanHeadline).trim();
+  const cleanOrder = input.displayOrder ?? input.sortOrder;
+  const cleanSlug =
+    input.slug?.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-") ||
+    cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+  return prisma.$transaction(async (tx) => {
+    const category = input.id
+      ? await tx.giftCategory.update({
+          where: { id: input.id },
+          data: {
+            name: cleanName,
+            slug: cleanSlug,
+            headline: cleanHeadline,
+            description: cleanDescription,
+            icon: input.icon?.trim() || undefined,
+            accentColor: input.accentColor?.trim() || undefined,
+            heroImageUrl: input.heroImageUrl?.trim() || undefined,
+            displayOrder:
+              cleanOrder !== undefined ? Math.round(cleanOrder) : undefined,
+            isFeatured: input.isFeatured,
+            active: input.active,
+          },
+        })
+      : await tx.giftCategory.upsert({
+          where: { slug: cleanSlug },
+          create: {
+            name: cleanName,
+            slug: cleanSlug,
+            headline: cleanHeadline,
+            description: cleanDescription,
+            icon: input.icon?.trim() || "Sparkles",
+            accentColor: input.accentColor?.trim() || "#EA580C",
+            heroImageUrl:
+              input.heroImageUrl?.trim() || "/images/gifts/apex-anc-headphones.png",
+            displayOrder: cleanOrder ?? 10,
+            isFeatured: input.isFeatured ?? true,
+            active: input.active ?? true,
+          },
+          update: {
+            name: cleanName,
+            headline: cleanHeadline,
+            description: cleanDescription,
+            icon: input.icon?.trim() || undefined,
+            accentColor: input.accentColor?.trim() || undefined,
+            heroImageUrl: input.heroImageUrl?.trim() || undefined,
+            displayOrder:
+              cleanOrder !== undefined ? Math.round(cleanOrder) : undefined,
+            isFeatured: input.isFeatured,
+            active: input.active,
+          },
+        });
+
+    await tx.auditLog.create({
+      data: {
+        actorUserId: input.actorUserId || null,
+        actorRole: "ADMIN",
+        action: input.id ? "CATEGORY_UPDATED" : "CATEGORY_CREATED",
+        entityType: "GiftCategory",
+        entityId: category.id,
+        metadataJson: JSON.stringify({
+          name: category.name,
+          slug: category.slug,
+        }),
+      },
+    });
+
+    return category;
+  });
 }
 
 export async function updateVendorGovernance(input: {

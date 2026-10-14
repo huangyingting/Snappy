@@ -99,16 +99,16 @@ export function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-[#141210]/10 bg-[#FAF8F5]/90 backdrop-blur-xl">
       {/* Top Demo Role Switcher Ribbon */}
-      <div className="border-b border-slate-100 bg-slate-900 px-4 py-1.5 text-xs text-slate-300">
+      <div className="border-b border-white/10 bg-[#141210] px-4 py-1.5 text-xs text-stone-300">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/20 px-2 py-0.5 font-medium text-indigo-300">
-              <Globe className="h-3 w-3" /> Multi-Role & Regional Sandbox
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#C89D54]/40 bg-[#C89D54]/15 px-2.5 py-0.5 font-semibold tracking-wide text-[#F3D9A4]">
+              <Globe className="h-3 w-3 text-[#C89D54]" /> ATELIER SANDBOX
             </span>
-            <span className="hidden text-slate-400 sm:inline">
-              Instant role switch (1-click sign-in):
+            <span className="hidden text-stone-400 sm:inline">
+              1-click persona switch:
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -121,12 +121,12 @@ export function Navbar() {
                   disabled={switching !== null}
                   className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition ${
                     isActive
-                      ? "bg-indigo-500 text-white shadow-sm"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                      ? "bg-[#D95D39] text-white shadow-xs"
+                      : "bg-white/8 text-stone-300 hover:bg-white/15 hover:text-white"
                   }`}
                 >
                   <span>{p.label}</span>
-                  <span className="rounded bg-black/25 px-1 text-[10px] opacity-80">
+                  <span className="rounded-full bg-black/30 px-1.5 py-0.2 font-mono-code text-[10px] opacity-85">
                     {switching === p.email ? "..." : p.badge}
                   </span>
                 </button>
@@ -138,87 +138,92 @@ export function Navbar() {
 
       {/* Main Navigation Bar */}
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm">
+        <div className="flex items-center gap-7">
+          <Link href="/" className="group flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#141210] text-[#F3D9A4] shadow-sm transition group-hover:bg-[#D95D39] group-hover:text-white">
               <Gift className="h-5 w-5" />
             </div>
             <div>
-              <span className="text-lg font-bold tracking-tight text-slate-900">
-                Snappy
-              </span>
-              <span className="ml-1.5 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-600">
-                Global Gifting
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-display text-xl font-semibold tracking-tight text-[#141210]">
+                  Snappy
+                </span>
+                <span className="rounded-full border border-[#D95D39]/30 bg-[#D95D39]/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-[#B84322] uppercase">
+                  Atelier V2
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-stone-500">
+                Global Gifting & Curated Logistics
+              </p>
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-1 rounded-full border border-[#141210]/10 bg-white/80 p-1 shadow-2xs md:flex">
             <Link
               href="/corporate"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                 pathname?.startsWith("/corporate")
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#141210] text-white shadow-xs"
+                  : "text-stone-600 hover:bg-stone-100 hover:text-[#141210]"
               }`}
             >
-              <Building2 className="h-4 w-4" />
-              Corporate Hub
+              <Building2 className="h-3.5 w-3.5" />
+              Corporate Studio
             </Link>
             <Link
               href="/vendor"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                 pathname?.startsWith("/vendor")
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#0F5338] text-white shadow-xs"
+                  : "text-stone-600 hover:bg-stone-100 hover:text-[#141210]"
               }`}
             >
-              <Package className="h-4 w-4" />
-              Vendor Portal
+              <Package className="h-3.5 w-3.5" />
+              Vendor Catalog & Logistics
             </Link>
             <Link
               href="/recipient"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                 pathname?.startsWith("/recipient") || pathname?.startsWith("/claim")
-                  ? "bg-amber-50 text-amber-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#D95D39] text-white shadow-xs"
+                  : "text-stone-600 hover:bg-stone-100 hover:text-[#141210]"
               }`}
             >
-              <Sparkles className="h-4 w-4" />
-              Recipient Hub
+              <Sparkles className="h-3.5 w-3.5" />
+              Recipient Suite
             </Link>
             <Link
               href="/admin"
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                 pathname?.startsWith("/admin")
-                  ? "bg-rose-50 text-rose-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-[#7C2D12] text-white shadow-xs"
+                  : "text-stone-600 hover:bg-stone-100 hover:text-[#141210]"
               }`}
             >
-              <ShieldCheck className="h-4 w-4" />
-              Platform Admin
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Control Tower
             </Link>
           </nav>
         </div>
 
         <div className="flex items-center gap-3">
           {user ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <div className="hidden text-right sm:block">
-                <div className="flex items-center justify-end gap-1.5 text-xs font-semibold text-slate-900">
-                  <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
+                <div className="flex items-center justify-end gap-1.5 text-xs font-semibold text-[#141210]">
+                  <UserCheck className="h-3.5 w-3.5 text-[#D95D39]" />
                   <span>{user.name}</span>
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">
+                  <span className="rounded-full bg-[#F3EFE6] px-2 py-0.5 font-mono-code text-[10px] font-bold text-[#141210]">
                     {user.role}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-stone-500">
                   {user.company?.name || user.vendor?.businessName || user.email}
                 </p>
               </div>
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#141210]/15 bg-white px-3.5 py-1.5 text-xs font-semibold text-[#141210] shadow-2xs transition hover:bg-stone-100"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Sign Out
@@ -228,15 +233,15 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/auth/recipient"
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-200/60"
               >
-                Claim a Gift
+                Redeem Invitation
               </Link>
               <Link
                 href="/auth/corporate"
-                className="rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700"
+                className="rounded-full bg-[#141210] px-4 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#D95D39]"
               >
-                Enroll / Sign In
+                Access Workspaces
               </Link>
             </div>
           )}

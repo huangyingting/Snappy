@@ -15,12 +15,18 @@ export async function POST(
       productId: body.productId,
       charityId: body.charityId,
       recipientRegion: body.recipientRegion || "NA",
+      selectedVariant: body.selectedVariant,
       shippingName: body.shippingName,
+      shippingPhone: body.shippingPhone,
       shippingAddressLine1: body.shippingAddressLine1,
+      shippingAddressLine2: body.shippingAddressLine2,
       shippingCity: body.shippingCity,
       shippingState: body.shippingState,
       shippingPostalCode: body.shippingPostalCode,
       shippingCountry: body.shippingCountry,
+      deliveryInstructions: body.deliveryInstructions,
+      saveToAddressBook: Boolean(body.saveToAddressBook),
+      addressLabel: body.addressLabel,
       thankYouNote: body.thankYouNote,
     });
 

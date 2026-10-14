@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id                   String              @id @default(cuid())
+  name                 String
+  slug                 String              @unique
+  domain               String
+  industry             String              @default("Technology")
+  sizeBand             String              @default("201-1000")
+  primaryRegion        String              @default("NA")
+  logoUrl              String              @default("")
+  brandColor           String              @default("#4F46E5")
+  walletBalanceCents   Int                 @default(0)
+  escrowBalanceCents   Int                 @default(0)
+  hideRecipientAddress Boolean             @default(true)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  users                User[]
+  walletTransactions   WalletTransaction[]
+  collections          Collection[]
+  campaigns            Campaign[]
+  giftSends            GiftSend[]
+}
+
+model Vendor {
+  id                String      @id @default(cuid())
+  businessName      String
+  slug              String      @unique
+  taxId             String
+  status            String      @default("APPROVED") // PENDING | APPROVED | SUSPENDED
+  hqCountry         String      @default("US")
+  supportedRegions  String      @default("NA") // Comma-separated: NA,EMEA,APAC,LATAM
+  commissionRateBps Int         @default(1500) // 15.00%
+  slaDays           Int         @default(3)
+  payoutBalanceCents Int        @default(0)
+  rating            Float       @default(4.9)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  users             User[]
+  products          Product[]
+  giftOrders        GiftOrder[]
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  passwordHash        String
+  name                String
+  role                String     // ADMIN | CORPORATE | VENDOR | RECIPIENT
+  jobTitle            String     @default("")
+  preferredRegion     String     @default("NA")
+  defaultAddressLine1 String     @default("")
+  defaultCity         String     @default("")
+  defaultState        String     @default("")
+  defaultPostalCode   String     @default("")
+  defaultCountry      String     @default("US")
+  companyId           String?
+  company             Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  vendorId            String?
+  vendor              Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  campaignsCreated    Campaign[]
+  receivedGifts       GiftSend[]
+  auditLogs           AuditLog[]
+
+  @@index([role])
+  @@index([companyId])
+  @@index([vendorId])
+}
+
+model WalletTransaction {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type         String   // DEPOSIT | ESCROW_HOLD | ESCROW_SURPLUS_REFUND | EXPIRED_GIFT_REFUND
+  amountCents  Int
+  balanceAfter Int
+  escrowAfter  Int
+  note         String
+  referenceId  String   @default("")
+  createdAt    DateTime @default(now())
+
+  @@index([companyId, createdAt])
+}
+
+model Product {
+  id                 String              @id @default(cuid())
+  vendorId           String
+  vendor             Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  title              String
+  description        String
+  category           String              // Tech | Wellness | Gourmet | Home & Living | Apparel & Swag | Experiences
+  priceCents         Int
+  wholesaleCostCents Int
+  imageUrl           String
+  stockQuantity      Int                 @default(50)
+  supportedRegions   String              @default("NA") // Comma-separated: NA,EMEA,APAC,LATAM
+  isFeatured         Boolean             @default(false)
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  collectionProducts CollectionProduct[]
+  giftOrders         GiftOrder[]
+
+  @@index([vendorId])
+  @@index([priceCents, active])
+}
+
+model Collection {
+  id                 String              @id @default(cuid())
+  title              String
+  description        String
+  occasion           String              // All Occasions | Onboarding | Anniversary | Birthday | Client VIP | Holiday
+  budgetTierCents    Int                 // e.g. 2500, 5000, 10000, 25000
+  coverImageUrl      String              @default("")
+  isGlobal           Boolean             @default(true)
+  companyId          String?
+  company            Company?            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  collectionProducts CollectionProduct[]
+  campaigns          Campaign[]
+
+  @@index([budgetTierCents, isGlobal])
+}
+
+model CollectionProduct {
+  id           String     @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, productId])
+}
+
+model Charity {
+  id                String      @id @default(cuid())
+  name              String
+  category          String
+  description       String
+  logoUrl           String      @default("")
+  totalDonatedCents Int         @default(0)
+  active            Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  giftOrders        GiftOrder[]
+}
+
+model Campaign {
+  id              String      @id @default(cuid())
+  companyId       String
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdByUserId String?
+  createdByUser   User?       @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  title           String
+  occasion        String
+  messageTemplate String
+  budgetCents     Int
+  collectionId    String?
+  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  status          String      @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED
+  triggerType     String      @default("MANUAL") // MANUAL | BULK_CSV | AUTOMATED_MILESTONE
+  allowCharity    Boolean     @default(true)
+  expiresInDays   Int         @default(30)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  giftSends       GiftSend[]
+
+  @@index([companyId])
+}
+
+model GiftSend {
+  id              String     @id @default(cuid())
+  campaignId      String
+  campaign        Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recipientEmail  String
+  recipientName   String
+  recipientUserId String?
+  recipientUser   User?      @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  preferredRegion String     @default("NA")
+  claimToken      String     @unique
+  claimCode       String     @unique
+  budgetCents     Int
+  status          String     @default("SENT") // SENT | OPENED | CLAIMED | PROCESSING | SHIPPED | DELIVERED | DONATED | EXPIRED
+  personalMessage String
+  thankYouNote    String     @default("")
+  expiresAt       DateTime
+  claimedAt       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  giftOrder       GiftOrder?
+
+  @@index([companyId, status])
+  @@index([recipientEmail])
+}
+
+model GiftOrder {
+  id                   String    @id @default(cuid())
+  giftSendId           String    @unique
+  giftSend             GiftSend  @relation(fields: [giftSendId], references: [id], onDelete: Cascade)
+  productId            String?
+  product              Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  vendorId             String?
+  vendor               Vendor?   @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  charityId            String?
+  charity              Charity?  @relation(fields: [charityId], references: [id], onDelete: SetNull)
+  orderType            String    // PHYSICAL_GIFT | CHARITY_DONATION
+  retailAmountCents    Int
+  vendorPayoutCents    Int       @default(0)
+  platformFeeCents     Int       @default(0)
+  recipientRegion      String    @default("NA")
+  shippingName         String    @default("")
+  shippingAddressLine1 String    @default("")
+  shippingCity         String    @default("")
+  shippingState        String    @default("")
+  shippingPostalCode   String    @default("")
+  shippingCountry      String    @default("")
+  trackingCarrier      String    @default("")
+  trackingNumber       String    @default("")
+  fulfillmentStatus    String    @default("PENDING_VENDOR") // PENDING_VENDOR | PROCESSING | SHIPPED | DELIVERED | COMPLETED
+  shippedAt            DateTime?
+  deliveredAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([vendorId, fulfillmentStatus])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String?
+  actorUser    User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorRole    String
+  action       String
+  entityType   String
+  entityId     String
+  metadataJson String   @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}

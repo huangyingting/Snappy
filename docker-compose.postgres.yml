@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: snappy
+      POSTGRES_PASSWORD: snappy_secret
+      POSTGRES_DB: snappy_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - snappy_pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: "postgresql://snappy:snappy_secret@postgres:5432/snappy_prod?schema=public"
+      AUTH_SECRET: "replace-with-production-32-byte-secret"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+    ports:
+      - "3000:3000"
+
+volumes:
+  snappy_pgdata:

@@ -1,0 +1,54 @@
+name: Snappy Production Deployment (PostgreSQL)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy:
+    name: Migrate PostgreSQL & Build Production Release
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'production' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Switch Prisma schema to PostgreSQL provider
+        run: npm run db:use:postgres
+
+      - name: Validate PostgreSQL Prisma Schema & Generate Client
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL || 'postgresql://snappy:snappy@localhost:5432/snappy_prod' }}
+        run: npx prisma validate && npx prisma generate
+
+      - name: Apply PostgreSQL Schema Migrations (when PRODUCTION_DATABASE_URL is configured)
+        if: ${{ secrets.PRODUCTION_DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npx prisma db push --accept-data-loss
+
+      - name: Build Production Next.js Bundle
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL || 'postgresql://snappy:snappy@localhost:5432/snappy_prod' }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET || 'production-build-verification-secret' }}
+        run: npm run build

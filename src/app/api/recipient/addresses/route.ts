@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import {
@@ -37,12 +38,9 @@ export async function POST(request: Request) {
       isDefault: Boolean(body.isDefault),
     });
 
-    return NextResponse.json({ address }, { status: 201 });
+    return NextResponse.json({ address: { ...address, recipientPhone: address.phone } }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save address." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }
 
@@ -62,9 +60,6 @@ export async function DELETE(request: Request) {
     const result = await deleteRecipientAddress(session.userId, addressId);
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete address." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { upsertGiftCategory } from "@/lib/services/admin-service";
@@ -11,9 +12,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const headline = body.headline || body.tagline;
-    if (!body.name || !headline) {
+    if (!body.name) {
       return NextResponse.json(
-        { error: "Category name and headline/tagline are required." },
+        { error: "Category name is required." },
         { status: 400 }
       );
     }
@@ -40,9 +41,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ category }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save gift category." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

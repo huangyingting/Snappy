@@ -1,490 +1,294 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { seedDatabase } from "../prisma/seed";
-import {
-  enrollCorporate,
-  enrollVendor,
-  enrollRecipient,
-  authenticateUser,
-  lookupClaimByCode,
-} from "@/lib/services/auth-service";
-import {
-  getVendorDashboard,
-  createVendorProduct,
-  updateVendorProduct,
-  cloneVendorProduct,
-  archiveOrDeleteVendorProduct,
-  fulfillVendorOrder,
-  appendOrderShipmentCheckpoint,
-} from "@/lib/services/vendor-service";
-import {
-  getCorporateDashboard,
-  depositCorporateWallet,
-  createCustomCollection,
-  createCampaignAndOptionallySend,
-} from "@/lib/services/corporate-service";
-import {
-  getClaimExperienceByToken,
-  redeemGiftByToken,
-  saveRecipientThankYouNote,
-  getRecipientPortalData,
-  updateRecipientOrderDelivery,
-  swapRecipientOrderGift,
-  saveRecipientAddress,
-  deleteRecipientAddress,
-} from "@/lib/services/recipient-service";
-import {
-  getAdminDashboard,
-  updateVendorGovernance,
-  reclaimExpiredGifts,
-  upsertGiftCategory,
-} from "@/lib/services/admin-service";
-import { verifySessionToken } from "@/lib/auth";
+import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { hashPassword, verifyPassword } from "@/lib/passwords";
+import { enrollCorporate, enrollVendor, enrollRecipient, authenticateUser, consumeAccountToken, requestAccountEmail, lookupClaimByCode } from "@/lib/services/auth-service";
+import { recordSettledPayment, createCampaignAndOptionallySend, getCorporateDashboard, createCustomCollection, dispatchGiftsToCampaign } from "@/lib/services/corporate-service";
+import { createVendorProduct, fulfillVendorOrder, updateVendorProduct, getVendorDashboard } from "@/lib/services/vendor-service";
+import { updateVendorGovernance, reclaimExpiredGifts, createGlobalCollection, createCharityPartner, settleCharityDonation } from "@/lib/services/admin-service";
+import { getClaimExperienceByToken, redeemGiftByToken, getRecipientPortalData, saveRecipientAddress, updateRecipientOrderDelivery, swapRecipientOrderGift } from "@/lib/services/recipient-service";
+import { deliverEmails } from "@/lib/email";
+import { randomUUID } from "node:crypto";
 
-describe("Snappy Multi-Role Gifting Platform — End-to-End Domain & Integration Suite", () => {
+const password = "Test-only-long-password-2026";
+let adminId: string;
+let companyId: string;
+let corporateId: string;
+let vendorId: string;
+let recipientId: string;
+let productId: string;
+let secondProductId: string;
+let claimToken: string;
+let orderId: string;
+
+async function emailToken(email: string, path: string) {
+  const message = await prisma.emailMessage.findFirstOrThrow({ where: { to: email, text: { contains: `/auth/${path}?token=` } }, orderBy: { createdAt: "desc" } });
+  return message.text.match(/token=([A-Za-z0-9_-]+)/)![1];
+}
+
+describe("Production workflows on an isolated empty database", () => {
   beforeAll(async () => {
-    await seedDatabase();
+    if (process.env.SNAPPY_TEST_RUN !== "1") throw new Error("Use npm test; never run domain tests against a working database.");
+    expect(await prisma.user.count()).toBe(0);
+    expect(await prisma.product.count()).toBe(0);
+    adminId = (await prisma.user.create({
+      data: { email: "operator@example.test", name: "Test Operator", role: "ADMIN", passwordHash: await hashPassword(password), emailVerified: new Date() },
+    })).id;
+  });
+  afterAll(() => prisma.$disconnect());
+
+  it("uses independent salted password hashes and rejects invalid/legacy hashes", async () => {
+    const first = await hashPassword(password);
+    const second = await hashPassword(password);
+    expect(first).not.toBe(second);
+    expect(await verifyPassword(password, first)).toBe(true);
+    expect(await verifyPassword("wrong", first)).toBe(false);
+    expect(await verifyPassword(password, "pbkdf2_v1$legacy")).toBe(false);
   });
 
-  it("1. Enrolls a new Corporate Customer with workspace, initial wallet deposit, and signed session", async () => {
-    const res = await enrollCorporate({
-      name: "claire.hr",
-      email: "claire@stellar-ai.io",
-      password: "Password123!",
-      companyName: "Stellar AI Labs",
-      industry: "Artificial Intelligence",
-      sizeBand: "201-1000",
-      primaryRegion: "NA",
-      brandColor: "#6366F1",
-      hideRecipientAddress: true,
-      initialDepositCents: 300000, // $3,000.00
+  it("enrolls an unfunded company and requires single-use email verification", async () => {
+    const result = await enrollCorporate({
+      name: "Test Sender", email: "sender@example.test", password, companyName: "Integration Company",
+      initialDepositCents: 900000,
     });
-
-    expect(res.user.role).toBe("CORPORATE");
-    expect(res.company.name).toBe("Stellar AI Labs");
-    expect(res.company.walletBalanceCents).toBe(300000);
-    expect(res.company.escrowBalanceCents).toBe(0);
-    expect(res.redirectTo).toBe("/corporate");
-
-    const verified = verifySessionToken(res.token);
-    expect(verified?.role).toBe("CORPORATE");
-    expect(verified?.companyId).toBe(res.company.id);
+    companyId = result.company.id;
+    corporateId = result.user.id;
+    expect(result.company.walletBalanceCents).toBe(0);
+    expect(await prisma.walletTransaction.count()).toBe(0);
+    expect(result.user).not.toHaveProperty("passwordHash");
+    expect(await authenticateUser(result.user.email, password, "CORPORATE")).toBeNull();
+    const token = await emailToken(result.user.email, "verify");
+    expect(await prisma.authToken.findUnique({ where: { tokenHash: token } })).toBeNull();
+    await consumeAccountToken(token, "verify");
+    await expect(consumeAccountToken(token, "verify")).rejects.toThrow(/invalid|expired|used/);
+    const login = await authenticateUser(result.user.email, password, "CORPORATE");
+    expect(login?.id).toBe(corporateId);
+    expect(login).not.toHaveProperty("passwordHash");
+    expect(await authenticateUser(result.user.email, password, "ADMIN")).toBeNull();
   });
 
-  it("2. Enrolls a new Regional Gift Vendor covering EMEA and APAC and publishes a regional SKU", async () => {
-    const enrolled = await enrollVendor({
-      name: "Henrik Larsen",
-      email: "henrik@copenhagen-design.dk",
-      password: "Password123!",
-      businessName: "Copenhagen Design House",
-      taxId: "DK-VAT-39104912",
-      hqCountry: "DK",
-      supportedRegions: ["EMEA", "APAC"],
-      slaDays: 2,
+  it("validates registration and never allows vendor self-approval", async () => {
+    await expect(enrollCorporate({ name: "x", email: "not-email", password: "short" })).rejects.toThrow();
+    const result = await enrollVendor({
+      name: "Test Supplier", email: "supplier@example.test", password,
+      businessName: "Integration Supplier", taxId: "TEST-001", hqCountry: "US",
+      supportedRegions: ["NA", "EMEA"], requireReview: false, status: "APPROVED",
     });
-
-    expect(enrolled.user.role).toBe("VENDOR");
-    expect(enrolled.vendor.supportedRegions).toBe("EMEA,APAC");
-
-    const sku = await createVendorProduct({
-      vendorId: enrolled.vendor.id,
-      actorUserId: enrolled.user.id,
-      title: "Danish Sculptural Desk Lamp",
-      description: "Cordless rechargeable brass desk lamp with warm dimmer.",
-      category: "Home & Living",
-      priceCents: 8000, // $80.00
-      stockQuantity: 30,
-      supportedRegions: ["EMEA", "APAC"],
+    vendorId = result.vendor.id;
+    expect(result.vendor.status).toBe("PENDING");
+    await consumeAccountToken(await emailToken(result.user.email, "verify"), "verify");
+    const product = await createVendorProduct({
+      vendorId, title: "Integration Product", description: "A product created solely by the integration test.",
+      category: "Tech", priceCents: 4000, wholesaleCostCents: 2500,
+      imageUrl: "https://example.test/product.jpg", stockQuantity: 5, supportedRegions: ["NA"],
     });
-
-    expect(sku.priceCents).toBe(8000);
-    expect(sku.supportedRegions).toBe("EMEA,APAC");
-
-    const dashboard = await getVendorDashboard(enrolled.vendor.id);
-    expect(dashboard.metrics.totalProducts).toBe(1);
-    expect(dashboard.metrics.activeProducts).toBe(1);
+    productId = product.id;
+    expect((await getCorporateDashboard(companyId)).allActiveProducts).toHaveLength(0);
+    await updateVendorGovernance({ vendorId, status: "APPROVED", actorUserId: adminId });
+    expect((await getCorporateDashboard(companyId)).allActiveProducts).toHaveLength(1);
+    expect((await getVendorDashboard(vendorId)).metrics.totalProducts).toBe(1);
+    await expect(updateVendorProduct(vendorId, productId, { priceCents: -1 })).rejects.toThrow();
+    await expect(createVendorProduct({ vendorId, title: "Bad", description: "invalid", category: "Tech", priceCents: 1, stockQuantity: -2, supportedRegions: ["NOWHERE"] })).rejects.toThrow();
   });
 
-  it("3. Enrolls a Recipient account and links existing gifts by email", async () => {
-    const enrolled = await enrollRecipient({
-      name: "Mateo Silva",
-      email: "mateo.silva@acmecloud.io",
-      password: "Password123!",
-      preferredRegion: "LATAM",
-      defaultAddressLine1: "Av. Paulista 1000",
-      defaultCity: "São Paulo",
-      defaultCountry: "BR",
-    });
-
-    expect(enrolled.user.role).toBe("RECIPIENT");
-    const portal = await getRecipientPortalData(enrolled.user.id);
-    expect(portal.gifts.length).toBeGreaterThanOrEqual(1);
-    expect(portal.gifts[0].claimCode).toBe("SNPY-LA50D2");
+  it("only credits actual administrator-reconciled payments, idempotently", async () => {
+    await expect(recordSettledPayment({ companyId, actorUserId: corporateId, amountCents: 50000, settlementReference: "test-bank-001" })).rejects.toThrow(/administrators/);
+    const input = { companyId, actorUserId: adminId, amountCents: 50000, settlementReference: "test-bank-001" };
+    await recordSettledPayment(input);
+    await recordSettledPayment(input);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).walletBalanceCents).toBe(50000);
+    expect(await prisma.walletTransaction.count({ where: { settlementReference: input.settlementReference } })).toBe(1);
+    await expect(recordSettledPayment({ ...input, amountCents: 1000 })).rejects.toThrow(/already assigned/);
+    await expect(recordSettledPayment({ ...input, amountCents: NaN })).rejects.toThrow();
   });
 
-  it("4. Authenticates users with role enforcement and resolves Magic Claim Codes", async () => {
-    const adminLogin = await authenticateUser(
-      "admin@snappy.com",
-      "SnappyPass123!",
-      "ADMIN"
-    );
-    expect(adminLogin.user.role).toBe("ADMIN");
-    expect(adminLogin.redirectTo).toBe("/admin");
-
-    await expect(
-      authenticateUser("admin@snappy.com", "SnappyPass123!", "CORPORATE")
-    ).rejects.toThrow(/registered as ADMIN/);
-
-    const claimLookup = await lookupClaimByCode("SNPY-NA100A", "alex.rivera@acmecloud.io");
-    expect(claimLookup.claimToken).toBe("snappy_demo_na_100");
-    expect(claimLookup.redirectTo).toBe("/claim/snappy_demo_na_100");
+  it("creates curated collections, atomically reserves funds and queues real invitations", async () => {
+    const collection = await createCustomCollection({
+      companyId, title: "Integration Curation", description: "Test collection", occasion: "Recognition",
+      budgetTierCents: 5000, productIds: [productId], actorUserId: corporateId,
+    });
+    const result = await createCampaignAndOptionallySend({
+      companyId, actorUserId: corporateId, title: "Integration Campaign", occasion: "Recognition",
+      messageTemplate: "Thank you!", budgetCents: 5000, collectionId: collection.id,
+      recipients: [{ recipientName: "Test Recipient", recipientEmail: "recipient@example.test", preferredRegion: "NA" }],
+    });
+    claimToken = result.giftSends[0].claimToken;
+    expect(claimToken.length).toBeGreaterThan(40);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).escrowBalanceCents).toBe(5000);
+    const mail = await prisma.emailMessage.findFirstOrThrow({ where: { to: "recipient@example.test" } });
+    expect(mail.text).toContain(claimToken);
+    await expect(lookupClaimByCode(result.giftSends[0].claimCode, "other@example.test")).rejects.toThrow(/No gift/);
+    expect(await lookupClaimByCode(result.giftSends[0].claimCode, "recipient@example.test")).toEqual({ redirectTo: `/claim/${claimToken}` });
+    await expect(lookupClaimByCode(result.giftSends[0].claimCode, undefined)).rejects.toThrow();
+    await expect(dispatchGiftsToCampaign({ companyId: "another-company", campaignId: result.campaign.id, recipients: [{ recipientName: "Other", recipientEmail: "other@example.test" }] })).rejects.toThrow(/not found/);
   });
 
-  it("5. Corporate Wallet Deposit, Custom Collection Creation, and Campaign Escrow Hold", async () => {
-    const corpLogin = await authenticateUser(
-      "sarah.chen@acmecloud.io",
-      "SnappyPass123!",
-      "CORPORATE"
-    );
-    const companyId = corpLogin.user.companyId!;
-
-    const beforeDash = await getCorporateDashboard(companyId);
-    const initialWallet = beforeDash.company.walletBalanceCents;
-    const initialEscrow = beforeDash.company.escrowBalanceCents;
-
-    // Deposit $1,000.00 (100000 cents)
-    const dep = await depositCorporateWallet({
-      companyId,
-      amountCents: 100000,
-      note: "Automated Test Deposit",
-      actorUserId: corpLogin.user.id,
-    });
-    expect(dep.company.walletBalanceCents).toBe(initialWallet + 100000);
-
-    // Create custom collection
-    const productIds = beforeDash.allActiveProducts.slice(0, 4).map((p) => p.id);
-    const customCol = await createCustomCollection({
-      companyId,
-      title: "Acme Engineering Spotlight",
-      description: "Curated tech and coffee favorites",
-      occasion: "Spot Recognition",
-      budgetTierCents: 10000,
-      productIds,
-      actorUserId: corpLogin.user.id,
-    });
-    expect(customCol.isGlobal).toBe(false);
-
-    // Launch a $100 campaign for 2 recipients ($200 total escrow hold)
-    const launched = await createCampaignAndOptionallySend({
-      companyId,
-      actorUserId: corpLogin.user.id,
-      title: "Ship-It Award Winners",
-      occasion: "Spot Recognition",
-      messageTemplate: "Congrats on shipping the v4 release!",
-      budgetCents: 10000,
-      collectionId: customCol.id,
-      allowCharity: true,
-      recipients: [
-        {
-          recipientName: "Devon Price",
-          recipientEmail: "devon.price@acmecloud.io",
-          preferredRegion: "NA",
-        },
-        {
-          recipientName: "Sora Takahashi",
-          recipientEmail: "sora.takahashi@acmecloud.io",
-          preferredRegion: "APAC",
-        },
-      ],
-    });
-
-    expect(launched.giftSends).toHaveLength(2);
-
-    const afterDash = await getCorporateDashboard(companyId);
-    expect(afterDash.company.walletBalanceCents).toBe(initialWallet + 100000 - 20000);
-    expect(afterDash.company.escrowBalanceCents).toBe(initialEscrow + 20000);
+  it("enforces company collection ownership and rejects unfunded or duplicate dispatches", async () => {
+    const other = await enrollCorporate({ name: "Other Sender", email: "other-sender@example.test", password, companyName: "Other Company" });
+    const collection = await createCustomCollection({ companyId: other.company.id, title: "Private", description: "", occasion: "Recognition", budgetTierCents: 5000, productIds: [productId] });
+    await expect(createCampaignAndOptionallySend({
+      companyId, title: "Cross-tenant", occasion: "", messageTemplate: "Test", budgetCents: 5000, collectionId: collection.id,
+    })).rejects.toThrow(/Collection not found/);
+    await expect(createCampaignAndOptionallySend({
+      companyId: other.company.id, title: "Unfunded", occasion: "", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "Recipient", recipientEmail: "unfunded@example.test" }],
+    })).rejects.toThrow(/Insufficient wallet/);
+    await expect(createCampaignAndOptionallySend({
+      companyId, title: "Duplicate", occasion: "", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "A", recipientEmail: "same@example.test" }, { recipientName: "B", recipientEmail: "SAME@example.test" }],
+    })).rejects.toThrow(/only once/);
+    await expect(createGlobalCollection({ title: "Over budget", description: "", occasion: "", budgetTierCents: 1000, productIds: [productId] })).rejects.toThrow(/within the collection budget/);
   });
 
-  it("6. Dynamically filters Recipient Claim Catalog by Region, redeems Physical Gift, refunds Escrow surplus, and fulfills Vendor Order", async () => {
-    // Inspect NA claim link ($100 budget)
-    const naClaim = await getClaimExperienceByToken("snappy_demo_na_100", "NA");
-    expect(naClaim.giftSend.status).toBe("OPENED");
-    expect(naClaim.eligibleProducts.length).toBeGreaterThan(0);
-    expect(
-      naClaim.eligibleProducts.every(
-        (p) => p.priceCents <= 10000 && p.supportedRegions.includes("NA")
-      )
-    ).toBe(true);
-
-    // Switch region to LATAM on the same claim token and verify all returned products support LATAM
-    const latamClaim = await getClaimExperienceByToken("snappy_demo_na_100", "LATAM");
-    expect(
-      latamClaim.eligibleProducts.every((p) => p.supportedRegions.includes("LATAM"))
-    ).toBe(true);
-
-    // Pick a $45 product (MagSafe Dock) on a $100 budget gift -> should refund $55 (5500 cents) surplus back to Acme Cloud wallet!
-    const underBudgetProduct =
-      naClaim.eligibleProducts.find((p) => p.priceCents < 10000) ||
-      naClaim.eligibleProducts[0];
-    const expectedSurplus = 10000 - underBudgetProduct.priceCents;
-
-    const corpBefore = await getCorporateDashboard(naClaim.giftSend.company.id);
-
-    const redeemed = await redeemGiftByToken({
-      claimToken: "snappy_demo_na_100",
-      orderType: "PHYSICAL_GIFT",
-      productId: underBudgetProduct.id,
-      recipientRegion: "NA",
-      shippingName: "Alex Rivera",
-      shippingAddressLine1: "742 Evergreen Terrace",
-      shippingCity: "Austin",
-      shippingState: "TX",
-      shippingPostalCode: "78701",
-      shippingCountry: "US",
-      thankYouNote: "Huge thanks to the Acme leadership team!",
-    });
-
-    expect(redeemed.giftSend.status).toBe("CLAIMED");
-    expect(redeemed.surplusRefundCents).toBe(expectedSurplus);
-
-    // Verify Corporate Wallet received the surplus refund and Recipient Address is shielded!
-    const corpAfter = await getCorporateDashboard(naClaim.giftSend.company.id);
-    expect(corpAfter.company.walletBalanceCents).toBe(
-      corpBefore.company.walletBalanceCents + expectedSurplus
-    );
-    const matchingSend = corpAfter.allGiftSends.find(
-      (gs) => gs.claimToken === "snappy_demo_na_100"
-    );
-    expect(matchingSend?.giftOrder?.shippingAddressLine1).toContain("Hidden by Recipient Privacy Shield");
-
-    // Verify Vendor can transition order PENDING_VENDOR -> SHIPPED -> DELIVERED
-    const vendorId = redeemed.giftOrder.vendorId!;
-    const shippedOrder = await fulfillVendorOrder({
-      vendorId,
-      orderId: redeemed.giftOrder.id,
-      fulfillmentStatus: "SHIPPED",
-      trackingCarrier: "FedEx Priority",
-      trackingNumber: "FDX-9988776655",
-    });
-    expect(shippedOrder.fulfillmentStatus).toBe("SHIPPED");
-    expect(shippedOrder.trackingNumber).toBe("FDX-9988776655");
-
-    const deliveredOrder = await fulfillVendorOrder({
-      vendorId,
-      orderId: redeemed.giftOrder.id,
-      fulfillmentStatus: "DELIVERED",
-    });
-    expect(deliveredOrder.fulfillmentStatus).toBe("DELIVERED");
+  it("makes campaign launch retries idempotent without reserving funds twice", async () => {
+    const input = {
+      requestKey: randomUUID(), companyId, actorUserId: corporateId,
+      title: "Retry-safe campaign", occasion: "Recognition", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "Retry", recipientEmail: "retry@example.test" }],
+    };
+    const before = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    const first = await createCampaignAndOptionallySend(input);
+    const second = await createCampaignAndOptionallySend(input);
+    expect(second.campaign.id).toBe(first.campaign.id);
+    expect(second.giftSends[0].id).toBe(first.giftSends[0].id);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).walletBalanceCents).toBe(before.walletBalanceCents - 5000);
+    await expect(createCampaignAndOptionallySend({ ...input, title: "Different campaign" })).rejects.toThrow(/different campaign/);
   });
 
-  it("7. Redeems a Gift for 100% Charitable Donation and updates thank-you note", async () => {
-    const apacClaim = await getClaimExperienceByToken("snappy_demo_apac_50", "APAC");
-    expect(apacClaim.charities.length).toBeGreaterThan(0);
-    const targetCharity = apacClaim.charities[0];
-
-    const donationRes = await redeemGiftByToken({
-      claimToken: "snappy_demo_apac_50",
-      orderType: "CHARITY_DONATION",
-      charityId: targetCharity.id,
-      recipientRegion: "APAC",
-      thankYouNote: "Donated my onboarding gift to protect our oceans!",
+  it("links gifts only after verified email ownership and never leaks password hashes or the address book via bearer links", async () => {
+    const result = await enrollRecipient({ name: "Test Recipient", email: "recipient@example.test", password, preferredRegion: "NA" });
+    recipientId = result.user.id;
+    expect((await prisma.giftSend.findUniqueOrThrow({ where: { claimToken } })).recipientUserId).toBeNull();
+    await consumeAccountToken(await emailToken(result.user.email, "verify"), "verify");
+    expect((await prisma.giftSend.findUniqueOrThrow({ where: { claimToken } })).recipientUserId).toBe(recipientId);
+    await saveRecipientAddress({
+      userId: recipientId, label: "Home", recipientName: "Test Recipient",
+      addressLine1: "Test-only Street 1", city: "Test City", postalCode: "00000", country: "US", region: "NA", isDefault: true,
     });
-
-    expect(donationRes.giftSend.status).toBe("DONATED");
-    expect(donationRes.giftOrder.orderType).toBe("CHARITY_DONATION");
-
-    const updatedNote = await saveRecipientThankYouNote(
-      "snappy_demo_apac_50",
-      "Updated thank-you note: Grateful to donate to Ocean Cleanse!"
-    );
-    expect(updatedNote.thankYouNote).toContain("Grateful to donate");
+    expect((await getClaimExperienceByToken(claimToken)).savedAddresses).toHaveLength(0);
+    expect((await getClaimExperienceByToken(claimToken, "NA", recipientId)).savedAddresses).toHaveLength(1);
+    expect(JSON.stringify(await getClaimExperienceByToken(claimToken))).not.toContain("wholesaleCostCents");
+    await expect(redeemGiftByToken({
+      claimToken, orderType: "PHYSICAL_GIFT", productId, recipientRegion: "NA",
+      saveToAddressBook: true, viewerUserId: corporateId,
+    })).rejects.toThrow(/invited recipient/);
+    expect((await getRecipientPortalData(recipientId)).user).not.toHaveProperty("passwordHash");
   });
 
-  it("8. Platform Admin approves pending vendor and sweeps expired unclaimed gift escrow back to Corporate Wallet", async () => {
-    const adminBefore = await getAdminDashboard();
-    expect(adminBefore.metrics.pendingVendorsCount).toBeGreaterThanOrEqual(1);
-    expect(adminBefore.metrics.expiredUnclaimedCount).toBeGreaterThanOrEqual(1);
-
-    const pendingVendor = adminBefore.vendors.find((v) => v.status === "PENDING")!;
-    const approved = await updateVendorGovernance({
-      vendorId: pendingVendor.id,
-      status: "APPROVED",
+  it("redeems once, reconciles stock and escrow without inventing carrier data", async () => {
+    const result = await redeemGiftByToken({
+      claimToken, orderType: "PHYSICAL_GIFT", productId, recipientRegion: "NA",
+      shippingName: "Test Recipient", shippingAddressLine1: "Private Test Street",
+      shippingAddressLine2: "Private Test Suite", shippingPhone: "Test-only-phone",
+      shippingCity: "Test City", shippingPostalCode: "00000", shippingCountry: "US",
+      deliveryInstructions: "Private delivery instructions",
     });
-    expect(approved.status).toBe("APPROVED");
-
-    const sweepResult = await reclaimExpiredGifts();
-    expect(sweepResult.reclaimedCount).toBeGreaterThanOrEqual(1);
-    expect(sweepResult.totalReclaimedCents).toBeGreaterThanOrEqual(5000);
-
-    const adminAfter = await getAdminDashboard();
-    expect(adminAfter.metrics.expiredUnclaimedCount).toBe(0);
+    orderId = result.giftOrder.id;
+    expect(result.surplusRefundCents).toBe(1000);
+    expect(result.giftOrder.fulfillmentWarehouse).toBe("");
+    expect(result.giftOrder.estimatedDeliveryAt).toBeNull();
+    expect(result.giftOrder.trackingNumber).toBe("");
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: productId } })).stockQuantity).toBe(4);
+    const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
+    expect(company.walletBalanceCents).toBe(41000);
+    expect(company.escrowBalanceCents).toBe(5000);
+    await expect(redeemGiftByToken({ claimToken, orderType: "PHYSICAL_GIFT", productId, recipientRegion: "NA" })).rejects.toThrow(/already/);
+    const dashboard = await getCorporateDashboard(companyId);
+    const nested = JSON.stringify(dashboard.company.campaigns);
+    expect(nested).not.toContain("Private Test Street");
+    expect(nested).not.toContain("Private Test Suite");
+    expect(nested).not.toContain("Private delivery instructions");
   });
 
-  it("9. V2 Gift Category Taxonomy & Vendor Product Lifecycle (Variants, Specs, Clone, Archive)", async () => {
-    const newCat = await upsertGiftCategory({
-      slug: "executive-atelier",
-      name: "Executive Atelier",
-      tagline: "Heirloom desk objects and bespoke leather goods.",
-      description: "Curated luxury desk essentials for leadership milestones.",
-      accentColor: "#8B5E3C",
-      sortOrder: 7,
-    });
-    expect(newCat.slug).toBe("executive-atelier");
-
-    const vendorLogin = await authenticateUser(
-      "partner@apextech.io",
-      "SnappyPass123!",
-      "VENDOR"
-    );
-    const vendorId = vendorLogin.user.vendorId!;
-
-    const created = await createVendorProduct({
-      vendorId,
-      actorUserId: vendorLogin.user.id,
-      title: "Solid Walnut Fountain Pen Case",
-      description: "Hand-turned walnut desk pen case with brass magnetic clasp.",
-      category: "Executive Atelier",
-      badgeText: "Limited Studio",
-      priceCents: 6500,
-      stockQuantity: 25,
-      supportedRegions: ["NA", "EMEA"],
-      variants: ["Natural Walnut", "Smoked Ebony"],
-      tags: ["walnut", "desk", "heirloom"],
-      specs: { Material: "American Black Walnut", Clasp: "Solid Brass" },
-    });
-    expect(created.categoryId).toBe(newCat.id);
-    expect(created.variantsJson).toContain("Natural Walnut");
-
-    const updated = await updateVendorProduct(vendorId, created.id, {
-      priceCents: 7000,
-      stockQuantity: 40,
-    });
-    expect(updated.priceCents).toBe(7000);
-    expect(updated.stockQuantity).toBe(40);
-
-    const cloned = await cloneVendorProduct(vendorId, created.id, vendorLogin.user.id);
-    expect(cloned.title).toContain("(Atelier Edition)");
-    expect(cloned.id).not.toBe(created.id);
-
-    const removed = await archiveOrDeleteVendorProduct(
-      vendorId,
-      cloned.id,
-      vendorLogin.user.id
-    );
-    expect("deleted" in removed && removed.deleted).toBe(true);
+  it("requires ownership for edits and swaps and real tracking details for fulfillment", async () => {
+    await expect(updateRecipientOrderDelivery({
+      orderId, shippingName: "Test", shippingAddressLine1: "Test", shippingCity: "Test", shippingPostalCode: "00000", shippingCountry: "US",
+    })).rejects.toThrow(/authorization/);
+    await expect(swapRecipientOrderGift({ orderId, newProductId: productId })).rejects.toThrow(/authorization/);
+    secondProductId = (await createVendorProduct({
+      vendorId, title: "Alternative Product", description: "Another test-only item", category: "Tech",
+      priceCents: 4500, wholesaleCostCents: 3000, imageUrl: "https://example.test/alternative.jpg",
+      stockQuantity: 3, supportedRegions: ["NA"],
+    })).id;
+    const send = await prisma.giftSend.findUniqueOrThrow({ where: { claimToken }, include: { campaign: true } });
+    await prisma.collectionProduct.create({ data: { collectionId: send.campaign.collectionId!, productId: secondProductId } });
+    await swapRecipientOrderGift({ orderId, newProductId: secondProductId, userId: recipientId });
+    await expect(fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "DELIVERED" })).rejects.toThrow(/transition/);
+    await expect(fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "SHIPPED" })).rejects.toThrow(/tracking/);
+    await fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "PROCESSING" });
+    await fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "SHIPPED", trackingCarrier: "Test Carrier", trackingNumber: "TEST-TRACKING-001" });
+    await expect(swapRecipientOrderGift({ orderId, newProductId: productId, userId: recipientId })).rejects.toThrow(/dispatch/);
+    await fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "DELIVERED" });
+    await expect(fulfillVendorOrder({ vendorId, orderId, fulfillmentStatus: "PROCESSING" })).rejects.toThrow(/transition/);
   });
 
-  it("10. V2 Recipient Delivery Suite: Saved Address Book, Pre-Shipment Delivery Edit, and Transactional Gift Swap", async () => {
-    const elenaLogin = await authenticateUser(
-      "elena.rostova@acmecloud.io",
-      "SnappyPass123!",
-      "RECIPIENT"
-    );
-
-    // Add a saved address to Elena's Address Book
-    const newAddr = await saveRecipientAddress({
-      userId: elenaLogin.user.id,
-      label: "Berlin Studio",
-      recipientName: "Elena Rostova",
-      recipientPhone: "+49-30-555-0199",
-      addressLine1: "Torstrasse 112",
-      city: "Berlin",
-      postalCode: "10119",
-      country: "DE",
-      region: "EMEA",
-      deliveryInstructions: "Leave at courtyard studio reception",
-      isDefault: true,
+  it("reclaims expired invitations once and rejects expired redemption", async () => {
+    const result = await createCampaignAndOptionallySend({
+      companyId, title: "Expiring", occasion: "Recognition", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "Expired", recipientEmail: "expired@example.test" }],
     });
-    expect(newAddr.label).toBe("Berlin Studio");
-    expect(newAddr.isDefault).toBe(true);
-
-    // Inspect Elena's claimed order (token: snappy_claimed_pending_1, currently PENDING_VENDOR & unlocked)
-    const emeaExp = await getClaimExperienceByToken("snappy_claimed_pending_1", "EMEA");
-    const order = emeaExp.giftSend.giftOrder!;
-    expect(order.addressLocked).toBe(false);
-
-    // 1. Pre-shipment address & courier instructions update
-    const updatedDelivery = await updateRecipientOrderDelivery({
-      orderId: order.id,
-      claimToken: "snappy_claimed_pending_1",
-      actorUserId: elenaLogin.user.id,
-      shippingName: "Elena Rostova",
-      shippingPhone: "+49-30-555-0199",
-      shippingAddressLine1: "Torstrasse 112",
-      shippingCity: "Berlin",
-      shippingPostalCode: "10119",
-      shippingCountry: "DE",
-      deliveryInstructions: "Ring studio bell #3",
-      selectedVariant: "230V EU Plug",
-    });
-    expect(updatedDelivery?.shippingCity).toBe("Berlin");
-    expect(updatedDelivery?.deliveryInstructions).toBe("Ring studio bell #3");
-    expect(updatedDelivery?.shipmentEvents.some((e) => e.stage === "ADDRESS_UPDATED")).toBe(
-      true
-    );
-
-    // 2. Pre-shipment transactional gift swap to another EMEA-eligible product
-    const alternativeProduct = emeaExp.eligibleProducts.find(
-      (p) => p.id !== order.productId
-    )!;
-    expect(alternativeProduct).toBeDefined();
-
-    const swappedOrder = await swapRecipientOrderGift({
-      orderId: order.id,
-      newProductId: alternativeProduct.id,
-      selectedVariant: "Signature Edition",
-      claimToken: "snappy_claimed_pending_1",
-      actorUserId: elenaLogin.user.id,
-    });
-    expect(swappedOrder?.productId).toBe(alternativeProduct.id);
-    expect(swappedOrder?.swapCount).toBeGreaterThanOrEqual(1);
-    expect(swappedOrder?.shipmentEvents.some((e) => e.stage === "GIFT_SWAPPED")).toBe(true);
-
-    // Clean up saved address
-    const deleted = await deleteRecipientAddress(elenaLogin.user.id, newAddr.id);
-    expect(deleted.deleted).toBe(true);
+    await prisma.giftSend.update({ where: { id: result.giftSends[0].id }, data: { expiresAt: new Date(0) } });
+    await expect(redeemGiftByToken({ claimToken: result.giftSends[0].claimToken, orderType: "PHYSICAL_GIFT", productId, recipientRegion: "NA" })).rejects.toThrow(/expired/);
+    expect((await reclaimExpiredGifts(adminId)).reclaimedCount).toBe(1);
+    expect((await reclaimExpiredGifts(adminId)).reclaimedCount).toBe(0);
   });
 
-  it("11. V2 Multi-Checkpoint Carrier Logistics & Automatic Address Lock on Dispatch", async () => {
-    const emeaExp = await getClaimExperienceByToken("snappy_claimed_pending_1", "EMEA");
-    const order = emeaExp.giftSend.giftOrder!;
-    const vendorId = order.vendorId!;
+  it("resets passwords using expiring one-time tokens and invalidates existing sessions", async () => {
+    const previousVersion = (await prisma.user.findUniqueOrThrow({ where: { id: recipientId } })).sessionVersion;
+    await requestAccountEmail("recipient@example.test", "reset");
+    const token = await emailToken("recipient@example.test", "reset");
+    await consumeAccountToken(token, "reset", `${password}-updated`);
+    expect(await authenticateUser("recipient@example.test", password, "RECIPIENT")).toBeNull();
+    expect((await authenticateUser("recipient@example.test", `${password}-updated`, "RECIPIENT"))?.sessionVersion).toBe(previousVersion + 1);
+    await expect(consumeAccountToken(token, "reset", password)).rejects.toThrow(/invalid|used/);
+  });
 
-    // Append custom warehouse checkpoint
-    const checkpoint = await appendOrderShipmentCheckpoint({
-      vendorId,
-      orderId: order.id,
-      stage: "PROCESSING",
-      title: "Gift Custom-Wrapped at Amsterdam Atelier",
-      description: "Embossed linen card enclosed and passed quality inspection.",
-      location: "Amsterdam, NL",
+  it("fails explicitly rather than pretending to deliver email without SMTP", async () => {
+    delete process.env.SMTP_URL;
+    await expect(deliverEmails()).rejects.toThrow(/SMTP_URL/);
+    expect(await prisma.emailMessage.count({ where: { sentAt: { not: null } } })).toBe(0);
+  });
+
+  it("only counts charity transfers after an operator records actual settlement", async () => {
+    const charity = await createCharityPartner({ name: "Integration Charity", category: "Education", description: "Test-only charity", actorUserId: adminId });
+    const campaign = await createCampaignAndOptionallySend({
+      companyId, title: "Charity", occasion: "Recognition", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "Charity Recipient", recipientEmail: "charity@example.test" }],
     });
-    expect(checkpoint.title).toContain("Amsterdam Atelier");
+    const claim = await redeemGiftByToken({ claimToken: campaign.giftSends[0].claimToken, orderType: "CHARITY_DONATION", charityId: charity.id, recipientRegion: "NA" });
+    expect(claim.giftSend.status).toBe("DONATION_PENDING");
+    expect((await prisma.charity.findUniqueOrThrow({ where: { id: charity.id } })).totalDonatedCents).toBe(0);
+    const settlement = { orderId: claim.giftOrder.id, actorUserId: adminId, settlementReference: "charity-transfer-test-001" };
+    await settleCharityDonation(settlement);
+    await settleCharityDonation(settlement);
+    expect((await prisma.charity.findUniqueOrThrow({ where: { id: charity.id } })).totalDonatedCents).toBe(5000);
+  });
 
-    // Dispatch via DHL Express -> should auto-lock recipient address edits
-    const dispatched = await fulfillVendorOrder({
-      vendorId,
-      orderId: order.id,
-      fulfillmentStatus: "SHIPPED",
-      trackingCarrier: "DHL Express EuroPlus",
-      trackingNumber: "DHL-NL-77441122",
-      serviceLevel: "DHL Express Next-Day",
-      fulfillmentWarehouse: "Amsterdam Schiphol Hub, NL",
-      packageWeightGrams: 1150,
-      checkpointLocation: "Amsterdam, NL",
+  it("prevents double redemption and overselling under concurrent requests", async () => {
+    const product = await createVendorProduct({
+      vendorId, title: "Last Unit", description: "Test-only scarce product", category: "Tech",
+      imageUrl: "https://example.test/scarce.jpg", priceCents: 2000, stockQuantity: 1, supportedRegions: ["NA"],
     });
-    expect(dispatched.addressLocked).toBe(true);
+    const campaign = await createCampaignAndOptionallySend({
+      companyId, title: "Concurrent claims", occasion: "Recognition", messageTemplate: "Test", budgetCents: 5000,
+      recipients: [{ recipientName: "One", recipientEmail: "race-one@example.test" }, { recipientName: "Two", recipientEmail: "race-two@example.test" }],
+    });
+    const results = await Promise.allSettled(campaign.giftSends.map((send) => redeemGiftByToken({
+      claimToken: send.claimToken, orderType: "PHYSICAL_GIFT", productId: product.id, recipientRegion: "NA",
+      shippingName: "Test", shippingAddressLine1: "Test Street", shippingCity: "Test City", shippingPostalCode: "00000", shippingCountry: "US",
+    })));
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stockQuantity).toBe(0);
+    expect(await prisma.giftOrder.count({ where: { productId: product.id } })).toBe(1);
+    expect((await prisma.company.findUniqueOrThrow({ where: { id: companyId } })).walletBalanceCents).toBeGreaterThanOrEqual(0);
+  });
 
-    // Verify pre-shipment delivery edit is now blocked because carrier label is active
-    await expect(
-      updateRecipientOrderDelivery({
-        orderId: order.id,
-        claimToken: "snappy_claimed_pending_1",
-        shippingName: "Elena Rostova",
-        shippingAddressLine1: "Blocked Street 1",
-        shippingCity: "Munich",
-        shippingPostalCode: "80331",
-        shippingCountry: "DE",
-      })
-    ).rejects.toThrow(/locked/i);
+  it.skipIf(!process.env.TEST_SMTP_URL)("delivers queued email through a real local SMTP server", async () => {
+    process.env.SMTP_URL = process.env.TEST_SMTP_URL;
+    process.env.EMAIL_FROM = "Snappy Tests <test@example.test>";
+    const result = await deliverEmails();
+    expect(result.failed).toBe(0);
+    expect(result.sent).toBeGreaterThan(0);
+    expect(await prisma.emailMessage.count({ where: { sentAt: null } })).toBe(0);
+    expect((await prisma.emailMessage.findFirstOrThrow({ where: { sentAt: { not: null } } })).text).toBe("");
   });
 });

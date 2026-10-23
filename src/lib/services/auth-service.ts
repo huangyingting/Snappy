@@ -1,361 +1,197 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, verifyPassword, signSessionToken } from "@/lib/auth";
-import { serializeRegions, type RoleCode } from "@/lib/constants";
+import { hashPassword, verifyPassword } from "@/lib/passwords";
+import { AppError } from "@/lib/errors";
+import { rateLimit } from "@/lib/rate-limit";
+import { appUrl, queueEmail } from "@/lib/email";
+import type { RoleCode } from "@/lib/constants";
+import { transaction, type TransactionClient } from "@/lib/transaction";
 
-function slugify(input: string): string {
-  const base = input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `${base || "org"}-${Math.random().toString(36).slice(2, 7)}`;
+const region = z.enum(["NA", "EMEA", "APAC", "LATAM"]);
+const identity = z.object({
+  name: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(254).transform((v) => v.toLowerCase()),
+  password: z.string().min(12, "Use at least 12 characters for your password.").max(128),
+});
+const corporateSchema = identity.extend({
+  companyName: z.string().trim().min(1).max(150),
+  industry: z.string().trim().max(100).default(""),
+  sizeBand: z.string().max(30).default("1-50"),
+  primaryRegion: region.default("NA"),
+  brandColor: z.string().regex(/^#[a-fA-F0-9]{6}$/).default("#4F46E5"),
+  hideRecipientAddress: z.boolean().default(true),
+});
+const vendorSchema = identity.extend({
+  businessName: z.string().trim().min(1).max(150),
+  taxId: z.string().trim().min(1).max(100),
+  hqCountry: z.string().regex(/^[A-Z]{2}$/),
+  supportedRegions: z.array(region).min(1).max(4),
+  slaDays: z.number().int().min(1).max(14).default(3),
+});
+const recipientSchema = identity.extend({
+  preferredRegion: region.default("NA"),
+});
+
+function tokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-export interface EnrollCorporateInput {
-  name: string;
-  email: string;
-  password: string;
-  jobTitle?: string;
-  companyName: string;
-  domain?: string;
-  industry?: string;
-  sizeBand?: string;
-  primaryRegion?: string;
-  brandColor?: string;
-  hideRecipientAddress?: boolean;
-  initialDepositCents?: number;
+async function verificationEmail(tx: TransactionClient, user: { id: string; email: string }, purpose: "verify" | "reset") {
+  const token = randomBytes(32).toString("base64url");
+  await tx.authToken.deleteMany({ where: { userId: user.id, purpose } });
+  await tx.authToken.create({
+    data: {
+      tokenHash: tokenHash(token),
+      userId: user.id,
+      purpose,
+      expiresAt: new Date(Date.now() + (purpose === "verify" ? 24 : 1) * 60 * 60 * 1000),
+    },
+  });
+  const action = purpose === "verify" ? "Verify your email" : "Reset your password";
+  await queueEmail(tx, user.email, `${action} — Snappy`, `${action}:\n${appUrl()}/auth/${purpose}?token=${token}\n\nIf you did not request this, ignore this email.`);
 }
 
-export async function enrollCorporate(input: EnrollCorporateInput) {
-  const email = input.email.trim().toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    throw new Error("An account with this email already exists.");
+async function checkNewAccount(email: string) {
+  await rateLimit(`enroll:${email}`, 5);
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    throw new AppError("An account already exists. Sign in or reset your password.", 409);
   }
+}
 
-  const depositCents =
-    typeof input.initialDepositCents === "number" && input.initialDepositCents >= 0
-      ? Math.round(input.initialDepositCents)
-      : 250000; // Default $2,500 starter credit
-
-  const domain =
-    input.domain?.trim() ||
-    (email.includes("@") ? email.split("@")[1] : "company.com");
-
-  return prisma.$transaction(async (tx) => {
+export async function enrollCorporate(raw: unknown) {
+  const input = corporateSchema.parse(raw);
+  await checkNewAccount(input.email);
+  const passwordHash = await hashPassword(input.password);
+  return transaction(async (tx) => {
     const company = await tx.company.create({
       data: {
-        name: input.companyName.trim(),
-        slug: slugify(input.companyName),
-        domain,
-        industry: input.industry?.trim() || "Technology",
-        sizeBand: input.sizeBand?.trim() || "201-1000",
-        primaryRegion: input.primaryRegion?.trim().toUpperCase() || "NA",
-        brandColor: input.brandColor?.trim() || "#4F46E5",
-        walletBalanceCents: depositCents,
-        escrowBalanceCents: 0,
-        hideRecipientAddress: input.hideRecipientAddress ?? true,
+        name: input.companyName,
+        slug: randomUUID(),
+        domain: input.email.split("@")[1],
+        industry: input.industry,
+        sizeBand: input.sizeBand,
+        primaryRegion: input.primaryRegion,
+        brandColor: input.brandColor,
+        hideRecipientAddress: input.hideRecipientAddress,
       },
     });
-
-    if (depositCents > 0) {
-      await tx.walletTransaction.create({
-        data: {
-          companyId: company.id,
-          type: "DEPOSIT",
-          amountCents: depositCents,
-          balanceAfter: depositCents,
-          escrowAfter: 0,
-          note: "Initial Corporate Workspace Onboarding Deposit",
-          referenceId: `ONBOARD-${company.slug.toUpperCase()}`,
-        },
-      });
-    }
-
     const user = await tx.user.create({
       data: {
-        email,
-        passwordHash: hashPassword(input.password),
-        name: input.name.trim(),
-        role: "CORPORATE",
-        jobTitle: input.jobTitle?.trim() || "Gifting Program Admin",
-        preferredRegion: company.primaryRegion,
-        companyId: company.id,
+        name: input.name, email: input.email, passwordHash, role: "CORPORATE",
+        companyId: company.id, preferredRegion: input.primaryRegion,
       },
-      include: { company: true, vendor: true },
+      omit: { passwordHash: true },
     });
-
+    await verificationEmail(tx, user, "verify");
     await tx.auditLog.create({
-      data: {
-        actorUserId: user.id,
-        actorRole: "CORPORATE",
-        action: "CORPORATE_ENROLLED",
-        entityType: "Company",
-        entityId: company.id,
-        metadataJson: JSON.stringify({
-          companyName: company.name,
-          primaryRegion: company.primaryRegion,
-          initialDepositCents: depositCents,
-        }),
-      },
+      data: { actorUserId: user.id, actorRole: user.role, action: "CORPORATE_ENROLLED", entityType: "Company", entityId: company.id },
     });
-
-    const token = signSessionToken({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role: "CORPORATE",
-      companyId: company.id,
-      vendorId: null,
-    });
-
-    return { user, company, token, redirectTo: "/corporate" };
+    return { user, company, redirectTo: "/auth/corporate", verificationRequired: true };
   });
 }
 
-export interface EnrollVendorInput {
-  name: string;
-  email: string;
-  password: string;
-  jobTitle?: string;
-  businessName: string;
-  taxId: string;
-  hqCountry: string;
-  supportedRegions: string[];
-  slaDays?: number;
-  requireReview?: boolean;
-}
-
-export async function enrollVendor(input: EnrollVendorInput) {
-  const email = input.email.trim().toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    throw new Error("An account with this email already exists.");
-  }
-
-  const regionsCsv = serializeRegions(input.supportedRegions);
-  const status = input.requireReview ? "PENDING" : "APPROVED";
-
-  return prisma.$transaction(async (tx) => {
+export async function enrollVendor(raw: unknown) {
+  const input = vendorSchema.parse(raw);
+  await checkNewAccount(input.email);
+  const passwordHash = await hashPassword(input.password);
+  return transaction(async (tx) => {
     const vendor = await tx.vendor.create({
       data: {
-        businessName: input.businessName.trim(),
-        slug: slugify(input.businessName),
-        taxId: input.taxId.trim(),
-        status,
-        hqCountry: input.hqCountry.trim().toUpperCase() || "US",
-        supportedRegions: regionsCsv,
-        commissionRateBps: 1500,
-        slaDays: input.slaDays && input.slaDays > 0 ? Math.min(input.slaDays, 14) : 3,
+        businessName: input.businessName, slug: randomUUID(), taxId: input.taxId,
+        hqCountry: input.hqCountry, supportedRegions: [...new Set(input.supportedRegions)].join(","),
+        slaDays: input.slaDays, status: "PENDING",
       },
     });
-
     const user = await tx.user.create({
       data: {
-        email,
-        passwordHash: hashPassword(input.password),
-        name: input.name.trim(),
-        role: "VENDOR",
-        jobTitle: input.jobTitle?.trim() || "Partner Fulfillment Lead",
-        preferredRegion: regionsCsv.split(",")[0] || "NA",
-        vendorId: vendor.id,
+        name: input.name, email: input.email, passwordHash, role: "VENDOR",
+        vendorId: vendor.id, preferredRegion: input.supportedRegions[0],
       },
-      include: { company: true, vendor: true },
+      omit: { passwordHash: true },
     });
-
+    await verificationEmail(tx, user, "verify");
     await tx.auditLog.create({
-      data: {
-        actorUserId: user.id,
-        actorRole: "VENDOR",
-        action: "VENDOR_ENROLLED",
-        entityType: "Vendor",
-        entityId: vendor.id,
-        metadataJson: JSON.stringify({
-          businessName: vendor.businessName,
-          supportedRegions: vendor.supportedRegions,
-          status: vendor.status,
-        }),
-      },
+      data: { actorUserId: user.id, actorRole: user.role, action: "VENDOR_ENROLLED", entityType: "Vendor", entityId: vendor.id },
     });
-
-    const token = signSessionToken({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role: "VENDOR",
-      companyId: null,
-      vendorId: vendor.id,
-    });
-
-    return { user, vendor, token, redirectTo: "/vendor" };
+    return { user, vendor, redirectTo: "/auth/vendor", verificationRequired: true };
   });
 }
 
-export interface EnrollRecipientInput {
-  name: string;
-  email: string;
-  password: string;
-  preferredRegion?: string;
-  defaultAddressLine1?: string;
-  defaultCity?: string;
-  defaultState?: string;
-  defaultPostalCode?: string;
-  defaultCountry?: string;
-}
-
-export async function enrollRecipient(input: EnrollRecipientInput) {
-  const email = input.email.trim().toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    throw new Error("An account with this email already exists.");
-  }
-
-  return prisma.$transaction(async (tx) => {
+export async function enrollRecipient(raw: unknown) {
+  const input = recipientSchema.parse(raw);
+  await checkNewAccount(input.email);
+  const passwordHash = await hashPassword(input.password);
+  return transaction(async (tx) => {
     const user = await tx.user.create({
-      data: {
-        email,
-        passwordHash: hashPassword(input.password),
-        name: input.name.trim(),
-        role: "RECIPIENT",
-        preferredRegion: input.preferredRegion?.trim().toUpperCase() || "NA",
-        defaultAddressLine1: input.defaultAddressLine1?.trim() || "",
-        defaultCity: input.defaultCity?.trim() || "",
-        defaultState: input.defaultState?.trim() || "",
-        defaultPostalCode: input.defaultPostalCode?.trim() || "",
-        defaultCountry: input.defaultCountry?.trim() || "US",
-      },
-      include: { company: true, vendor: true },
+      data: { name: input.name, email: input.email, passwordHash, role: "RECIPIENT", preferredRegion: input.preferredRegion },
+      omit: { passwordHash: true },
     });
-
-    // Link any previously sent gifts addressed to this email
-    await tx.giftSend.updateMany({
-      where: { recipientEmail: email, recipientUserId: null },
-      data: { recipientUserId: user.id },
-    });
-
-    await tx.auditLog.create({
-      data: {
-        actorUserId: user.id,
-        actorRole: "RECIPIENT",
-        action: "RECIPIENT_ENROLLED",
-        entityType: "User",
-        entityId: user.id,
-        metadataJson: JSON.stringify({ preferredRegion: user.preferredRegion }),
-      },
-    });
-
-    const token = signSessionToken({
-      userId: user.id,
-      email: user.email,
-      name: user.name,
-      role: "RECIPIENT",
-      companyId: null,
-      vendorId: null,
-    });
-
-    return { user, token, redirectTo: "/recipient" };
+    await verificationEmail(tx, user, "verify");
+    return { user, redirectTo: "/auth/recipient", verificationRequired: true };
   });
 }
 
-export async function authenticateUser(emailInput: string, passwordInput: string, expectedRole?: RoleCode) {
+export async function authenticateUser(emailInput: string, password: string, expectedRole: RoleCode) {
   const email = emailInput.trim().toLowerCase();
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: { company: true, vendor: true },
-  });
-
-  if (!user || !verifyPassword(passwordInput, user.passwordHash)) {
-    throw new Error("Invalid email or password.");
-  }
-
-  if (expectedRole && user.role !== expectedRole) {
-    throw new Error(`This account is registered as ${user.role}, not ${expectedRole}.`);
-  }
-
-  const role = user.role as RoleCode;
-  const token = signSessionToken({
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role,
-    companyId: user.companyId,
-    vendorId: user.vendorId,
-  });
-
-  const redirectMap: Record<RoleCode, string> = {
-    CORPORATE: "/corporate",
-    VENDOR: "/vendor",
-    RECIPIENT: "/recipient",
-    ADMIN: "/admin",
-  };
-
-  return { user, token, redirectTo: redirectMap[role] || "/" };
-}
-
-export async function switchDemoPersona(emailInput: string) {
-  const email = emailInput.trim().toLowerCase();
-  const user = await prisma.user.findUnique({
-    where: { email },
-    include: { company: true, vendor: true },
-  });
-
-  if (!user) {
-    throw new Error(`Demo persona ${email} not found.`);
-  }
-
-  const role = user.role as RoleCode;
-  const token = signSessionToken({
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role,
-    companyId: user.companyId,
-    vendorId: user.vendorId,
-  });
-
-  const redirectMap: Record<RoleCode, string> = {
-    CORPORATE: "/corporate",
-    VENDOR: "/vendor",
-    RECIPIENT: "/recipient",
-    ADMIN: "/admin",
-  };
-
-  return { user, token, redirectTo: redirectMap[role] || "/" };
-}
-
-export async function lookupClaimByCode(codeOrToken: string, email?: string) {
-  const cleaned = codeOrToken.trim();
-  if (!cleaned) {
-    throw new Error("Please enter a valid Snappy claim code or token.");
-  }
-
-  const giftSend = await prisma.giftSend.findFirst({
-    where: {
-      OR: [
-        { claimCode: cleaned.toUpperCase() },
-        { claimToken: cleaned },
-      ],
-    },
-    include: {
-      company: true,
-      campaign: true,
-    },
-  });
-
-  if (!giftSend) {
-    throw new Error("No gift found matching that claim code.");
-  }
-
-  if (email && email.trim()) {
-    if (giftSend.recipientEmail.toLowerCase() !== email.trim().toLowerCase()) {
-      throw new Error("The email provided does not match the recipient for this claim code.");
-    }
-  }
-
+  await rateLimit(`login:${email}`, 10);
+  const user = await prisma.user.findUnique({ where: { email } });
+  // A fixed dummy hash keeps unknown users on the same password derivation path.
+  const dummy = `scrypt$${"0".repeat(32)}$${"0".repeat(128)}`;
+  const valid = await verifyPassword(password, user?.passwordHash || dummy);
+  if (!user || !valid || user.role !== expectedRole || !user.emailVerified) return null;
   return {
-    claimToken: giftSend.claimToken,
-    claimCode: giftSend.claimCode,
-    recipientName: giftSend.recipientName,
-    companyName: giftSend.company.name,
-    redirectTo: `/claim/${giftSend.claimToken}`,
+    id: user.id, email: user.email, name: user.name,
+    role: user.role, sessionVersion: user.sessionVersion,
   };
+}
+
+export async function requestAccountEmail(emailInput: unknown, purpose: "verify" | "reset") {
+  const email = z.string().trim().email().max(254).parse(emailInput).toLowerCase();
+  await rateLimit(`account-email:${email}`, 3);
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (user && (purpose === "reset" || !user.emailVerified)) {
+    await transaction((tx) => verificationEmail(tx, user, purpose));
+  }
+}
+
+export async function consumeAccountToken(rawToken: unknown, purpose: "verify" | "reset", password?: unknown) {
+  const token = z.string().min(40).max(100).parse(rawToken);
+  const passwordHash = purpose === "reset" ? await hashPassword(identity.shape.password.parse(password)) : undefined;
+  return transaction(async (tx) => {
+    const record = await tx.authToken.findUnique({ where: { tokenHash: tokenHash(token) } });
+    if (!record || record.purpose !== purpose || record.expiresAt < new Date()) {
+      throw new AppError("This link is invalid or expired. Request a new one.");
+    }
+    const deleted = await tx.authToken.deleteMany({ where: { tokenHash: record.tokenHash } });
+    if (!deleted.count) throw new AppError("This link has already been used.");
+    const user = await tx.user.update({
+      where: { id: record.userId },
+      data: purpose === "verify" ? { emailVerified: new Date() } : { passwordHash, sessionVersion: { increment: 1 } },
+      omit: { passwordHash: true },
+    });
+    if (purpose === "verify" && user.role === "RECIPIENT") {
+      await tx.giftSend.updateMany({
+        where: { recipientEmail: user.email, recipientUserId: null },
+        data: { recipientUserId: user.id },
+      });
+      await tx.recipientAddress.updateMany({
+        where: { recipientEmail: user.email, userId: null },
+        data: { userId: user.id },
+      });
+    }
+    return { redirectTo: `/auth/${user.role.toLowerCase()}` };
+  });
+}
+
+export async function lookupClaimByCode(codeInput: unknown, emailInput: unknown) {
+  const code = z.string().trim().min(1).max(100).parse(codeInput);
+  const email = z.string().trim().email("Enter the email address on your invitation.").max(254).parse(emailInput).toLowerCase();
+  await rateLimit(`claim:${email}`, 10);
+  const gift = await prisma.giftSend.findFirst({
+    where: { recipientEmail: email, OR: [{ claimCode: code.toUpperCase() }, { claimToken: code }] },
+    select: { claimToken: true },
+  });
+  if (!gift) throw new AppError("No gift matches that code and recipient email.", 404);
+  return { redirectTo: `/claim/${gift.claimToken}` };
 }

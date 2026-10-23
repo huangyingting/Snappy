@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { regionSupports, type RegionCode } from "@/lib/constants";
+import { z } from "zod";
+import { AppError } from "@/lib/errors";
+import { transaction } from "@/lib/transaction";
+import { regionSchema, shippingSchema } from "@/lib/validation";
 
-export async function getClaimExperienceByToken(claimToken: string, requestedRegion?: string) {
+export async function getClaimExperienceByToken(claimToken: string, requestedRegion?: string, viewerUserId?: string) {
   const giftSend = await prisma.giftSend.findFirst({
     where: {
-      OR: [{ claimToken }, { claimCode: claimToken.trim().toUpperCase() }],
+      claimToken,
     },
     include: {
       company: {
@@ -23,6 +27,7 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
               collectionProducts: {
                 include: {
                   product: {
+                    omit: { wholesaleCostCents: true },
                     include: {
                       giftCategory: true,
                       vendor: {
@@ -44,8 +49,10 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
         },
       },
       giftOrder: {
+        omit: { vendorPayoutCents: true, platformFeeCents: true, settlementReference: true },
         include: {
           product: {
+            omit: { wholesaleCostCents: true },
             include: {
               giftCategory: true,
               vendor: {
@@ -67,7 +74,7 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
   });
 
   if (!giftSend) {
-    throw new Error("Gift invitation not found.");
+    throw new AppError("Gift invitation not found.");
   }
 
   // Transition SENT -> OPENED on first visit if not expired
@@ -76,8 +83,8 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
     ["SENT", "OPENED"].includes(giftSend.status);
 
   if (giftSend.status === "SENT" && !isPastExpiry) {
-    await prisma.giftSend.update({
-      where: { id: giftSend.id },
+    await prisma.giftSend.updateMany({
+      where: { id: giftSend.id, status: "SENT" },
       data: { status: "OPENED" },
     });
     giftSend.status = "OPENED";
@@ -91,6 +98,7 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
   )
     .trim()
     .toUpperCase() as RegionCode;
+  regionSchema.parse(activeRegion);
 
   // Gather candidate products from collection or global catalog
   const candidateProducts =
@@ -103,12 +111,14 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
       p.stockQuantity > 0 &&
       p.vendor.status === "APPROVED" &&
       p.priceCents <= giftSend.budgetCents &&
+      regionSupports(p.vendor.supportedRegions, activeRegion) &&
       regionSupports(p.supportedRegions, activeRegion)
   );
 
-  // Fallback to all approved regional products within budget if collection has none for that specific region
-  if (eligibleProducts.length === 0) {
+  // Unrestricted campaigns use the approved regional catalog.
+  if (!giftSend.campaign.collectionId) {
     const allApprovedProducts = await prisma.product.findMany({
+      omit: { wholesaleCostCents: true },
       where: {
         active: true,
         stockQuantity: { gt: 0 },
@@ -132,7 +142,7 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
     });
 
     eligibleProducts = allApprovedProducts.filter((p) =>
-      regionSupports(p.supportedRegions, activeRegion)
+      regionSupports(p.supportedRegions, activeRegion) && regionSupports(p.vendor.supportedRegions, activeRegion)
     );
   }
 
@@ -143,10 +153,10 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
-    prisma.recipientAddress.findMany({
-      where: { recipientEmail: giftSend.recipientEmail.toLowerCase() },
+    viewerUserId ? prisma.recipientAddress.findMany({
+      where: { userId: viewerUserId, recipientEmail: giftSend.recipientEmail.toLowerCase() },
       orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-    }),
+    }) : Promise.resolve([]),
     prisma.giftCategory.findMany({
       where: { active: true },
       orderBy: { displayOrder: "asc" },
@@ -154,13 +164,22 @@ export async function getClaimExperienceByToken(claimToken: string, requestedReg
   ]);
 
   return {
-    giftSend,
+    giftSend: {
+      ...giftSend,
+      campaign: {
+        id: giftSend.campaign.id,
+        title: giftSend.campaign.title,
+        occasion: giftSend.campaign.occasion,
+        allowCharity: giftSend.campaign.allowCharity,
+      },
+    },
     activeRegion,
     isExpired: isPastExpiry || giftSend.status === "EXPIRED",
     isAlreadyClaimed: !["SENT", "OPENED", "EXPIRED"].includes(giftSend.status),
+    canSaveAddress: Boolean(viewerUserId && giftSend.recipientUserId === viewerUserId),
     eligibleProducts,
     charities,
-    savedAddresses,
+    savedAddresses: savedAddresses.map((address) => ({ ...address, recipientPhone: address.phone })),
     giftCategories,
   };
 }
@@ -182,14 +201,17 @@ export interface RedeemGiftInput {
   shippingCountry?: string;
   deliveryInstructions?: string;
   saveToAddressBook?: boolean;
+  viewerUserId?: string;
   addressLabel?: string;
   thankYouNote?: string;
 }
 
 export async function redeemGiftByToken(input: RedeemGiftInput) {
+  z.enum(["PHYSICAL_GIFT", "CHARITY_DONATION"]).parse(input.orderType);
   const region = input.recipientRegion.trim().toUpperCase();
+  regionSchema.parse(region);
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const giftSend = await tx.giftSend.findUnique({
       where: { claimToken: input.claimToken },
       include: {
@@ -200,30 +222,41 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
     });
 
     if (!giftSend) {
-      throw new Error("Gift invitation not found.");
+      throw new AppError("Gift invitation not found.");
     }
 
     if (giftSend.giftOrder || !["SENT", "OPENED"].includes(giftSend.status)) {
-      throw new Error("This gift has already been claimed or is no longer active.");
+      throw new AppError("This gift has already been claimed or is no longer active.");
     }
 
     if (giftSend.expiresAt.getTime() < Date.now()) {
-      throw new Error("This gift invitation has expired.");
+      throw new AppError("This gift invitation has expired.");
     }
+    if (input.saveToAddressBook && (!input.viewerUserId || input.viewerUserId !== giftSend.recipientUserId)) {
+      throw new AppError("Sign in as the invited recipient to save an address.", 403);
+    }
+    if (giftSend.company.escrowBalanceCents < giftSend.budgetCents) {
+      throw new AppError("Escrow is not funded. Contact the sender.", 409);
+    }
+    const reserved = await tx.giftSend.updateMany({
+      where: { id: giftSend.id, status: { in: ["SENT", "OPENED"] } },
+      data: { status: "CLAIMED" },
+    });
+    if (!reserved.count) throw new AppError("This gift has already been claimed.", 409);
 
     if (input.orderType === "CHARITY_DONATION") {
       if (!giftSend.campaign.allowCharity) {
-        throw new Error("Charitable donations are not enabled for this campaign.");
+        throw new AppError("Charitable donations are not enabled for this campaign.");
       }
       if (!input.charityId) {
-        throw new Error("Please select a charity partner.");
+        throw new AppError("Please select a charity partner.");
       }
 
       const charity = await tx.charity.findUnique({
         where: { id: input.charityId },
       });
       if (!charity || !charity.active) {
-        throw new Error("Selected charity partner is not available.");
+        throw new AppError("Selected charity partner is not available.");
       }
 
       // Release escrow for the gift budget
@@ -231,15 +264,8 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
         where: { id: giftSend.companyId },
         data: {
           escrowBalanceCents: {
-            decrement: Math.min(giftSend.company.escrowBalanceCents, giftSend.budgetCents),
+            decrement: giftSend.budgetCents,
           },
-        },
-      });
-
-      await tx.charity.update({
-        where: { id: charity.id },
-        data: {
-          totalDonatedCents: { increment: giftSend.budgetCents },
         },
       });
 
@@ -252,8 +278,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
           vendorPayoutCents: 0,
           platformFeeCents: 0,
           recipientRegion: region,
-          fulfillmentStatus: "COMPLETED",
-          deliveredAt: new Date(),
+          fulfillmentStatus: "PENDING_SETTLEMENT",
         },
         include: { charity: true },
       });
@@ -261,7 +286,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
       const updatedSend = await tx.giftSend.update({
         where: { id: giftSend.id },
         data: {
-          status: "DONATED",
+          status: "DONATION_PENDING",
           preferredRegion: region,
           thankYouNote: input.thankYouNote?.trim() || "",
           claimedAt: new Date(),
@@ -272,7 +297,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
         data: {
           actorUserId: giftSend.recipientUserId,
           actorRole: "RECIPIENT",
-          action: "GIFT_DONATED_TO_CHARITY",
+          action: "CHARITY_DONATION_REQUESTED",
           entityType: "GiftSend",
           entityId: giftSend.id,
           metadataJson: JSON.stringify({
@@ -286,8 +311,9 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
     }
 
     // Mode A: PHYSICAL_GIFT
+    input = { ...input, ...shippingSchema.parse(input) };
     if (!input.productId) {
-      throw new Error("Please select a gift item to claim.");
+      throw new AppError("Please select a gift item to claim.");
     }
     if (
       !input.shippingName?.trim() ||
@@ -296,7 +322,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
       !input.shippingPostalCode?.trim() ||
       !input.shippingCountry?.trim()
     ) {
-      throw new Error("Complete shipping address is required to deliver your gift.");
+      throw new AppError("Complete shipping address is required to deliver your gift.");
     }
 
     const product = await tx.product.findUnique({
@@ -305,28 +331,33 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
     });
 
     if (!product || !product.active) {
-      throw new Error("Selected product is no longer available.");
+      throw new AppError("Selected product is no longer available.");
     }
     if (product.vendor.status !== "APPROVED") {
-      throw new Error("Vendor for this product is not currently active.");
+      throw new AppError("Vendor for this product is not currently active.");
     }
     if (product.stockQuantity <= 0) {
-      throw new Error("Sorry, this product is currently out of stock.");
+      throw new AppError("Sorry, this product is currently out of stock.");
     }
     if (product.priceCents > giftSend.budgetCents) {
-      throw new Error("Selected product exceeds the gift budget allowance.");
+      throw new AppError("Selected product exceeds the gift budget allowance.");
     }
+    if (giftSend.campaign.collectionId && !await tx.collectionProduct.findUnique({
+      where: { collectionId_productId: { collectionId: giftSend.campaign.collectionId, productId: product.id } },
+    })) throw new AppError("This product is not in the invitation's collection.");
+    if (!regionSupports(product.vendor.supportedRegions, region)) throw new AppError("This vendor does not fulfill that region.");
     if (!regionSupports(product.supportedRegions, region)) {
-      throw new Error(
+      throw new AppError(
         `This product does not ship to region ${region} (supported: ${product.supportedRegions}).`
       );
     }
 
     // 1. Decrement product inventory
-    await tx.product.update({
-      where: { id: product.id },
+    const inventory = await tx.product.updateMany({
+      where: { id: product.id, stockQuantity: { gt: 0 } },
       data: { stockQuantity: { decrement: 1 } },
     });
+    if (!inventory.count) throw new AppError("This product is out of stock.", 409);
 
     // 2. Calculate financial settlement & surplus refund
     const retailAmountCents = product.priceCents;
@@ -341,7 +372,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
       where: { id: giftSend.companyId },
       data: {
         escrowBalanceCents: {
-          decrement: Math.min(giftSend.company.escrowBalanceCents, giftSend.budgetCents),
+          decrement: giftSend.budgetCents,
         },
         walletBalanceCents: {
           increment: surplusRefundCents,
@@ -374,26 +405,8 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
     });
 
     // Extract weight from specifications if available
-    let packageWeightGrams = 650;
-    try {
-      const specs = JSON.parse(product.specificationsJson || "{}");
-      if (typeof specs.weightGrams === "number" && specs.weightGrams > 0) {
-        packageWeightGrams = Math.round(specs.weightGrams);
-      }
-    } catch {
-      // ignore
-    }
-
-    const warehouseByRegion: Record<string, string> = {
-      NA: "Austin NA Fulfillment Hub (ATX-01)",
-      EMEA: "Rotterdam EMEA Atelier Hub (RTM-02)",
-      APAC: "Kyoto APAC Fulfillment Hub (KYO-01)",
-      LATAM: "São Paulo LATAM Hub (GRU-01)",
-    };
-
-    const estimatedDeliveryAt = new Date(
-      Date.now() + 1000 * 60 * 60 * 24 * Math.max(2, (product.vendor.slaDays || 2) + 2)
-    );
+    const specs = JSON.parse(product.specificationsJson);
+    const packageWeightGrams = typeof specs.weightGrams === "number" ? specs.weightGrams : 0;
 
     // 5. Create GiftOrder & initial ShipmentEvent & update GiftSend
     const order = await tx.giftOrder.create({
@@ -416,10 +429,7 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
         shippingPostalCode: input.shippingPostalCode.trim(),
         shippingCountry: input.shippingCountry.trim().toUpperCase(),
         deliveryInstructions: input.deliveryInstructions?.trim() || "",
-        fulfillmentWarehouse:
-          warehouseByRegion[region] || `${product.vendor.hqCountry} Fulfillment Hub`,
         packageWeightGrams,
-        estimatedDeliveryAt,
         addressLocked: false,
         fulfillmentStatus: "PENDING_VENDOR",
       },
@@ -433,9 +443,8 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
       data: {
         giftOrderId: order.id,
         stage: "ORDER_CONFIRMED",
-        title: "Gift Claimed & Routed to Local Regional Hub",
-        description: `Order routed to ${product.vendor.businessName} (${order.fulfillmentWarehouse}). Delivery address and gift selection remain editable until carrier manifest.`,
-        location: order.fulfillmentWarehouse,
+        title: "Gift selected and sent to vendor",
+        description: `Order assigned to ${product.vendor.businessName}. Delivery details remain editable until dispatch.`,
         actorRole: "SYSTEM",
       },
     });
@@ -508,9 +517,9 @@ export async function redeemGiftByToken(input: RedeemGiftInput) {
 }
 
 export async function saveRecipientThankYouNote(claimToken: string, thankYouNote: string) {
-  const cleaned = thankYouNote.trim();
+  const cleaned = z.string().trim().min(1).max(2000).parse(thankYouNote);
   if (!cleaned) {
-    throw new Error("Thank-you note cannot be empty.");
+    throw new AppError("Thank-you note cannot be empty.");
   }
 
   return prisma.giftSend.update({
@@ -536,19 +545,21 @@ export interface UpdateRecipientOrderDeliveryInput {
 }
 
 export async function updateRecipientOrderDelivery(input: UpdateRecipientOrderDeliveryInput) {
-  return prisma.$transaction(async (tx) => {
+  input = { ...input, ...shippingSchema.parse(input) };
+  if (!input.claimToken && !input.userId) throw new AppError("Recipient authorization required.", 403);
+  return transaction(async (tx) => {
     const order = await tx.giftOrder.findUnique({
       where: { id: input.orderId },
       include: { giftSend: true },
     });
 
     if (!order) {
-      throw new Error("Gift order not found.");
+      throw new AppError("Gift order not found.");
     }
 
     // Verify ownership by claimToken or userId
     if (input.claimToken && order.giftSend.claimToken !== input.claimToken) {
-      throw new Error("Unauthorized to modify this gift order.");
+      throw new AppError("Unauthorized to modify this gift order.");
     }
     if (input.userId && !input.claimToken) {
       const user = await tx.user.findUnique({ where: { id: input.userId } });
@@ -557,7 +568,7 @@ export async function updateRecipientOrderDelivery(input: UpdateRecipientOrderDe
         (order.giftSend.recipientUserId !== user.id &&
           order.giftSend.recipientEmail.toLowerCase() !== user.email.toLowerCase())
       ) {
-        throw new Error("Unauthorized to modify this gift order.");
+        throw new AppError("Unauthorized to modify this gift order.");
       }
     }
 
@@ -565,7 +576,7 @@ export async function updateRecipientOrderDelivery(input: UpdateRecipientOrderDe
       order.addressLocked ||
       !["PENDING_VENDOR", "PROCESSING"].includes(order.fulfillmentStatus)
     ) {
-      throw new Error(
+      throw new AppError(
         "Shipping address is locked because carrier manifest / dispatch has already occurred."
       );
     }
@@ -577,7 +588,7 @@ export async function updateRecipientOrderDelivery(input: UpdateRecipientOrderDe
       !input.shippingPostalCode?.trim() ||
       !input.shippingCountry?.trim()
     ) {
-      throw new Error("Complete street address, city, postal code, and country are required.");
+      throw new AppError("Complete street address, city, postal code, and country are required.");
     }
 
     const updated = await tx.giftOrder.update({
@@ -662,23 +673,24 @@ export interface SwapRecipientOrderGiftInput {
 }
 
 export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput) {
-  return prisma.$transaction(async (tx) => {
+  if (!input.claimToken && !input.userId) throw new AppError("Recipient authorization required.", 403);
+  return transaction(async (tx) => {
     const order = await tx.giftOrder.findUnique({
       where: { id: input.orderId },
       include: {
         giftSend: {
-          include: { company: true },
+          include: { company: true, campaign: true },
         },
         product: true,
       },
     });
 
     if (!order || order.orderType !== "PHYSICAL_GIFT") {
-      throw new Error("Physical gift order not found.");
+      throw new AppError("Physical gift order not found.");
     }
 
     if (input.claimToken && order.giftSend.claimToken !== input.claimToken) {
-      throw new Error("Unauthorized to swap this gift order.");
+      throw new AppError("Unauthorized to swap this gift order.");
     }
     if (input.userId && !input.claimToken) {
       const user = await tx.user.findUnique({ where: { id: input.userId } });
@@ -687,7 +699,7 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
         (order.giftSend.recipientUserId !== user.id &&
           order.giftSend.recipientEmail.toLowerCase() !== user.email.toLowerCase())
       ) {
-        throw new Error("Unauthorized to swap this gift order.");
+        throw new AppError("Unauthorized to swap this gift order.");
       }
     }
 
@@ -695,11 +707,11 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
       order.addressLocked ||
       !["PENDING_VENDOR", "PROCESSING"].includes(order.fulfillmentStatus)
     ) {
-      throw new Error("Gift can no longer be swapped because carrier dispatch has already started.");
+      throw new AppError("Gift can no longer be swapped because carrier dispatch has already started.");
     }
 
     if (order.productId === input.newProductId) {
-      throw new Error("Please choose a different gift item to exchange.");
+      throw new AppError("Please choose a different gift item to exchange.");
     }
 
     const newProduct = await tx.product.findUnique({
@@ -708,16 +720,21 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
     });
 
     if (!newProduct || !newProduct.active || newProduct.vendor.status !== "APPROVED") {
-      throw new Error("Selected replacement gift is not currently available.");
+      throw new AppError("Selected replacement gift is not currently available.");
     }
     if (newProduct.stockQuantity <= 0) {
-      throw new Error("Selected replacement gift is out of stock.");
+      throw new AppError("Selected replacement gift is out of stock.");
     }
     if (newProduct.priceCents > order.giftSend.budgetCents) {
-      throw new Error("Replacement gift exceeds the campaign budget allowance.");
+      throw new AppError("Replacement gift exceeds the campaign budget allowance.");
     }
+    const collectionId = order.giftSend.campaign.collectionId;
+    if (collectionId && !await tx.collectionProduct.findUnique({
+      where: { collectionId_productId: { collectionId, productId: newProduct.id } },
+    })) throw new AppError("Replacement gift is not in the invitation's collection.");
+    if (!regionSupports(newProduct.vendor.supportedRegions, order.recipientRegion)) throw new AppError("This vendor does not fulfill that region.");
     if (!regionSupports(newProduct.supportedRegions, order.recipientRegion)) {
-      throw new Error(
+      throw new AppError(
         `Replacement gift does not ship to region ${order.recipientRegion}.`
       );
     }
@@ -757,6 +774,10 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
     // 3. Reconcile corporate wallet if price changed between old item and new item
     const walletDeltaCents = order.retailAmountCents - newRetailCents;
     if (walletDeltaCents !== 0) {
+      const company = await tx.company.findUniqueOrThrow({ where: { id: order.giftSend.companyId } });
+      if (company.walletBalanceCents + walletDeltaCents < 0) {
+        throw new AppError("The sender has insufficient available funds for this higher-priced replacement.");
+      }
       const updatedCompany = await tx.company.update({
         where: { id: order.giftSend.companyId },
         data: {
@@ -782,13 +803,6 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
     }
 
     // 4. Update GiftOrder
-    const warehouseByRegion: Record<string, string> = {
-      NA: "Austin NA Fulfillment Hub (ATX-01)",
-      EMEA: "Rotterdam EMEA Atelier Hub (RTM-02)",
-      APAC: "Kyoto APAC Fulfillment Hub (KYO-01)",
-      LATAM: "São Paulo LATAM Hub (GRU-01)",
-    };
-
     const updatedOrder = await tx.giftOrder.update({
       where: { id: order.id },
       data: {
@@ -798,9 +812,8 @@ export async function swapRecipientOrderGift(input: SwapRecipientOrderGiftInput)
         vendorPayoutCents: newVendorPayoutCents,
         platformFeeCents: newPlatformFeeCents,
         selectedVariant: input.selectedVariant?.trim() || "",
-        fulfillmentWarehouse:
-          warehouseByRegion[order.recipientRegion] ||
-          `${newProduct.vendor.hqCountry} Fulfillment Hub`,
+        fulfillmentWarehouse: "",
+        trackingCarrier: "", trackingNumber: "", trackingUrl: "", estimatedDeliveryAt: null,
         fulfillmentStatus: "PENDING_VENDOR",
         swapCount: { increment: 1 },
       },
@@ -870,12 +883,21 @@ export interface SaveRecipientAddressInput {
 }
 
 export async function saveRecipientAddress(input: SaveRecipientAddressInput) {
+  input = z.object({
+    userId: z.string().min(1), addressId: z.string().min(1).optional(),
+    label: z.string().trim().min(1).max(100), recipientName: z.string().trim().min(1).max(100),
+    phone: z.string().trim().max(50).optional(), addressLine1: z.string().trim().min(1).max(200),
+    addressLine2: z.string().trim().max(200).optional(), city: z.string().trim().min(1).max(100),
+    state: z.string().trim().max(100).optional(), postalCode: z.string().trim().min(1).max(30),
+    country: z.string().regex(/^[A-Z]{2}$/), region: regionSchema,
+    deliveryInstructions: z.string().trim().max(1000).optional(), isDefault: z.boolean().optional(),
+  }).parse(input);
   const user = await prisma.user.findUnique({ where: { id: input.userId } });
   if (!user) {
-    throw new Error("Recipient user not found.");
+    throw new AppError("Recipient user not found.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     if (input.isDefault) {
       await tx.recipientAddress.updateMany({
         where: {
@@ -894,7 +916,7 @@ export async function saveRecipientAddress(input: SaveRecipientAddressInput) {
         (existing.userId !== user.id &&
           existing.recipientEmail.toLowerCase() !== user.email.toLowerCase())
       ) {
-        throw new Error("Address entry not found.");
+        throw new AppError("Address entry not found.");
       }
 
       return tx.recipientAddress.update({
@@ -956,7 +978,7 @@ export async function saveRecipientAddress(input: SaveRecipientAddressInput) {
 export async function deleteRecipientAddress(userId: string, addressId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
-    throw new Error("Recipient user not found.");
+    throw new AppError("Recipient user not found.");
   }
 
   const existing = await prisma.recipientAddress.findUnique({
@@ -967,7 +989,7 @@ export async function deleteRecipientAddress(userId: string, addressId: string) 
     (existing.userId !== user.id &&
       existing.recipientEmail.toLowerCase() !== user.email.toLowerCase())
   ) {
-    throw new Error("Address not found.");
+    throw new AppError("Address not found.");
   }
 
   await prisma.recipientAddress.delete({ where: { id: addressId } });
@@ -975,9 +997,9 @@ export async function deleteRecipientAddress(userId: string, addressId: string) 
 }
 
 export async function getRecipientPortalData(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, omit: { passwordHash: true } });
   if (!user) {
-    throw new Error("Recipient account not found.");
+    throw new AppError("Recipient account not found.");
   }
 
   const [gifts, savedAddresses, allActiveProducts, giftCategories] = await Promise.all([
@@ -1040,7 +1062,7 @@ export async function getRecipientPortalData(userId: string) {
   return {
     user,
     gifts,
-    savedAddresses,
+    savedAddresses: savedAddresses.map((address) => ({ ...address, recipientPhone: address.phone })),
     allActiveProducts,
     giftCategories,
     metrics: {

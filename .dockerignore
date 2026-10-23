@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+.env
+.env.*
+*.db
+*.db-*
+prisma/*.db
+prisma/*.db-*
+coverage
+test-results
+playwright-report
+*.tsbuildinfo
+docs

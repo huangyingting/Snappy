@@ -1,6 +1,8 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { createCampaignAndOptionallySend } from "@/lib/services/corporate-service";
+import { z } from "zod";
 
 export async function POST(request: Request) {
   try {
@@ -19,6 +21,7 @@ export async function POST(request: Request) {
 
     const result = await createCampaignAndOptionallySend({
       companyId: session.companyId,
+      requestKey: z.string().uuid().parse(body.requestKey),
       actorUserId: session.userId,
       title: body.title,
       occasion: body.occasion || "Spot Recognition",
@@ -33,9 +36,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to launch campaign." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

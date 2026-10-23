@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { saveRecipientThankYouNote } from "@/lib/services/recipient-service";
 
@@ -11,9 +12,6 @@ export async function POST(
     const updated = await saveRecipientThankYouNote(token, body.thankYouNote || "");
     return NextResponse.json({ giftSend: updated });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save thank-you note." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

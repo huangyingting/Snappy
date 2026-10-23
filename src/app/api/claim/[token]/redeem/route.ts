@@ -1,5 +1,7 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { redeemGiftByToken } from "@/lib/services/recipient-service";
+import { getSessionFromCookies } from "@/lib/auth";
 
 export async function POST(
   request: Request,
@@ -8,6 +10,7 @@ export async function POST(
   try {
     const { token } = await context.params;
     const body = await request.json();
+    const session = await getSessionFromCookies();
 
     const result = await redeemGiftByToken({
       claimToken: token,
@@ -25,16 +28,17 @@ export async function POST(
       shippingPostalCode: body.shippingPostalCode,
       shippingCountry: body.shippingCountry,
       deliveryInstructions: body.deliveryInstructions,
-      saveToAddressBook: Boolean(body.saveToAddressBook),
+      saveToAddressBook: session?.role === "RECIPIENT" && Boolean(body.saveToAddressBook),
+      viewerUserId: session?.role === "RECIPIENT" ? session.userId : undefined,
       addressLabel: body.addressLabel,
       thankYouNote: body.thankYouNote,
     });
 
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({
+      giftSend: { id: result.giftSend.id, status: result.giftSend.status },
+      giftOrder: { id: result.giftOrder.id, orderType: result.giftOrder.orderType, fulfillmentStatus: result.giftOrder.fulfillmentStatus },
+    }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to redeem gift." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

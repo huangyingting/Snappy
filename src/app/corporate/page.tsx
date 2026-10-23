@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Building2,
@@ -157,6 +157,8 @@ export default function CorporatePortalPage() {
   >("campaigns");
   const [banner, setBanner] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const launchRequest = useRef({ payload: "", key: "" });
 
   // Campaign Launcher State
   const [campTitle, setCampTitle] = useState("");
@@ -174,15 +176,11 @@ export default function CorporatePortalPage() {
     { recipientName: string; recipientEmail: string; preferredRegion: RegionCode }[]
   >([
     {
-      recipientName: "Taylor Brooks",
-      recipientEmail: "taylor.brooks@acmecloud.io",
+      recipientName: "",
+      recipientEmail: "",
       preferredRegion: "NA",
     },
   ]);
-
-  // Wallet Deposit State
-  const [depositDollars, setDepositDollars] = useState(1500);
-  const [depositNote, setDepositNote] = useState("Quarterly People Ops Recognition Top-Up");
 
   // Custom Collection State
   const [colTitle, setColTitle] = useState("");
@@ -204,9 +202,6 @@ export default function CorporatePortalPage() {
         if (res.ok) {
           setUnauthorized(false);
           setData(json);
-          if (json.collections?.length > 0 && !campCollectionId) {
-            setCampCollectionId(json.collections[0].id);
-          }
         } else {
           setErrorMsg(json.error || "Failed to load corporate workspace.");
         }
@@ -216,20 +211,11 @@ export default function CorporatePortalPage() {
     } finally {
       setLoading(false);
     }
-  }, [campCollectionId]);
+  }, []);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
-
-  async function quickSignInCorporate(email: string) {
-    await fetch("/api/auth/demo-switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    await loadDashboard();
-  }
 
   function addRecipientRow() {
     setRecipients((prev) => [
@@ -238,33 +224,9 @@ export default function CorporatePortalPage() {
     ]);
   }
 
-  function populateGlobalTeamSample() {
-    setRecipients([
-      {
-        recipientName: "Hannah Abbott (New York)",
-        recipientEmail: "hannah.na@acmecloud.io",
-        preferredRegion: "NA",
-      },
-      {
-        recipientName: "Lukas Weber (Berlin)",
-        recipientEmail: "lukas.emea@acmecloud.io",
-        preferredRegion: "EMEA",
-      },
-      {
-        recipientName: "Mei Lin (Singapore)",
-        recipientEmail: "mei.apac@acmecloud.io",
-        preferredRegion: "APAC",
-      },
-      {
-        recipientName: "Camila Rojas (Bogotá)",
-        recipientEmail: "camila.latam@acmecloud.io",
-        preferredRegion: "LATAM",
-      },
-    ]);
-  }
-
   async function handleLaunchCampaign(e: React.FormEvent) {
     e.preventDefault();
+    if (sending) return;
     setErrorMsg("");
     setBanner("");
 
@@ -272,63 +234,49 @@ export default function CorporatePortalPage() {
       (r) => r.recipientName.trim() && r.recipientEmail.trim()
     );
 
-    const res = await fetch("/api/corporate/campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: campTitle,
-        occasion: campOccasion,
-        messageTemplate: campMessage,
-        budgetCents: Number(campBudgetCents),
-        collectionId: campCollectionId || null,
-        triggerType: campTriggerType,
-        allowCharity: campAllowCharity,
-        recipients: validRecipients,
-      }),
-    });
-
-    const json = await res.json();
-    if (!res.ok) {
-      setErrorMsg(json.error || "Could not launch campaign.");
-    } else {
-      setCampTitle("");
-      setBanner(
-        `Launched "${json.campaign.title}" and dispatched ${json.giftSends.length} magic claim link(s)! Funds reserved in Escrow.`
-      );
-      setActiveTab("sends");
-      await loadDashboard();
-    }
-  }
-
-  async function handleWalletDeposit(e: React.FormEvent) {
-    e.preventDefault();
-    setErrorMsg("");
-    setBanner("");
-    const res = await fetch("/api/corporate/wallet/deposit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amountCents: Math.round(Number(depositDollars) * 100),
-        note: depositNote,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setErrorMsg(json.error || "Deposit failed.");
-    } else {
-      setBanner(
-        `Added ${formatCurrency(Math.round(Number(depositDollars) * 100))} to corporate wallet.`
-      );
-      await loadDashboard();
+    const payload = {
+      title: campTitle, occasion: campOccasion, messageTemplate: campMessage,
+      budgetCents: Number(campBudgetCents), collectionId: campCollectionId || null,
+      triggerType: campTriggerType, allowCharity: campAllowCharity, recipients: validRecipients,
+    };
+    const encoded = JSON.stringify(payload);
+    if (launchRequest.current.payload !== encoded) launchRequest.current = { payload: encoded, key: crypto.randomUUID() };
+    setSending(true);
+    try {
+      const res = await fetch("/api/corporate/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, requestKey: launchRequest.current.key }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setErrorMsg(json.error || "Could not launch campaign.");
+      } else {
+        setCampTitle("");
+        setBanner(
+          `Launched "${json.campaign.title}" with ${json.giftSends.length} invitation email(s) queued. Funds reserved in escrow.`
+        );
+        setActiveTab("sends");
+        await loadDashboard();
+      }
+    } catch {
+      setErrorMsg("Unable to launch the campaign. You can safely retry.");
+    } finally {
+      setSending(false);
     }
   }
 
   async function handleToggleAddressPrivacy(hide: boolean) {
-    await fetch("/api/corporate/settings", {
+    const response = await fetch("/api/corporate/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hideRecipientAddress: hide }),
     });
+    if (!response.ok) {
+      const result = await response.json();
+      setErrorMsg(result.error || "Unable to update privacy settings.");
+      return;
+    }
     await loadDashboard();
   }
 
@@ -378,44 +326,14 @@ export default function CorporatePortalPage() {
             Corporate Gifting Studio
           </h1>
           <p className="mt-2 text-xs text-[#6E665E]">
-            Sign in to a seeded corporate workspace with 1 click or enroll a new enterprise organization.
+            {errorMsg || "Sign in to your company workspace to manage gifting."}
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button
-              onClick={() => quickSignInCorporate("sarah.chen@acmecloud.io")}
-              className="flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 text-left transition hover:border-[#C85A32]"
-            >
-              <div>
-                <div className="text-xs font-bold text-[#141210]">Acme Cloud Corp</div>
-                <div className="text-[11px] text-[#6E665E]">
-                  Sarah Chen • $12,450 Wallet Balance
-                </div>
-              </div>
-              <span className="rounded-full bg-[#141210] px-3 py-1 text-[11px] font-semibold text-[#FAF8F5]">
-                Enter →
-              </span>
-            </button>
-            <button
-              onClick={() => quickSignInCorporate("marcus.vance@novafintech.com")}
-              className="flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 text-left transition hover:border-[#1F4D3A]"
-            >
-              <div>
-                <div className="text-xs font-bold text-[#141210]">Nova FinTech Global</div>
-                <div className="text-[11px] text-[#6E665E]">
-                  Marcus Vance • EMEA HQ
-                </div>
-              </div>
-              <span className="rounded-full bg-[#1F4D3A] px-3 py-1 text-[11px] font-semibold text-white">
-                Enter →
-              </span>
-            </button>
-          </div>
           <div className="mt-6 border-t border-[#EFECE6] pt-4">
             <Link
               href="/auth/corporate"
               className="text-xs font-semibold text-[#C85A32] hover:underline"
             >
-              Or enroll a new Corporate Customer organization →
+              Sign in or create a company workspace →
             </Link>
           </div>
         </div>
@@ -665,6 +583,7 @@ export default function CorporatePortalPage() {
                     onChange={(e) => setCampCollectionId(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs font-semibold"
                   >
+                    <option value="">All approved regional products</option>
                     {collections.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.title}
@@ -687,7 +606,6 @@ export default function CorporatePortalPage() {
                   >
                     <option value="MANUAL">Direct Send</option>
                     <option value="BULK_CSV">Bulk Team Drop</option>
-                    <option value="AUTOMATED_MILESTONE">HRIS Milestone Trigger</option>
                   </select>
                 </div>
               </div>
@@ -726,13 +644,6 @@ export default function CorporatePortalPage() {
                     </span>
                   </span>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={populateGlobalTeamSample}
-                      className="rounded-full border border-[#C85A32]/30 bg-[#C85A32]/10 px-3 py-1 text-[11px] font-bold text-[#C85A32] hover:bg-[#C85A32]/20"
-                    >
-                      + Load 4-Region Team (NA/EMEA/APAC/LATAM)
-                    </button>
                     <button
                       type="button"
                       onClick={addRecipientRow}
@@ -795,6 +706,7 @@ export default function CorporatePortalPage() {
 
               <button
                 type="submit"
+                disabled={sending}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#141210] px-6 py-3.5 text-xs font-bold text-[#FAF8F5] shadow-sm transition hover:bg-[#C85A32]"
               >
                 <Send className="h-4 w-4" />
@@ -977,7 +889,7 @@ export default function CorporatePortalPage() {
                   required
                   value={colTitle}
                   onChange={(e) => setColTitle(e.target.value)}
-                  placeholder="Acme President's Club Selection"
+                  placeholder="Your team's favorites"
                   className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
                 />
               </div>
@@ -1133,51 +1045,16 @@ export default function CorporatePortalPage() {
       {activeTab === "wallet" && (
         <div className="mt-6 grid gap-8 lg:grid-cols-12">
           <div className="lg:col-span-5">
-            <form
-              onSubmit={handleWalletDeposit}
-              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
-            >
+            <div className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs">
               <h3 className="font-serif text-xl font-semibold text-[#141210]">
                 Fund Corporate Gifting Balance
               </h3>
               <p className="text-xs text-[#6E665E]">
-                Funds are held in your corporate wallet and moved to escrow when gifts are sent. Unused balances from lower-priced selections or expired links automatically return here.
+                Contact your platform administrator to arrange payment. Your wallet is credited only after an operator records the settled payment reference. No payment is collected on this page.
               </p>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#575049]">
-                  Deposit Amount (USD $)
-                </label>
-                <input
-                  type="number"
-                  min={10}
-                  step={50}
-                  required
-                  value={depositDollars}
-                  onChange={(e) => setDepositDollars(Number(e.target.value))}
-                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-sm font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#575049]">
-                  Cost Center / Accounting Note
-                </label>
-                <input
-                  type="text"
-                  value={depositNote}
-                  onChange={(e) => setDepositNote(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3.5 py-2 text-xs"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full rounded-full bg-[#141210] py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
-              >
-                Add {formatCurrency(Math.round(Number(depositDollars) * 100))} to Wallet
-              </button>
-            </form>
+              <p className="text-xs text-[#6E665E]">Funds are reserved in escrow when gifts are sent. Unused budget and expired invitations are refunded to your wallet.</p>
+            </div>
           </div>
 
           <div className="lg:col-span-7">

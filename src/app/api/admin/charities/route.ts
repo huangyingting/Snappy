@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { createCharityPartner } from "@/lib/services/admin-service";
@@ -19,9 +20,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ charity }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create charity partner." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

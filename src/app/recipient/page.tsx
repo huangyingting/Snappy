@@ -9,7 +9,6 @@ import {
   Truck,
   CheckCircle2,
   ExternalLink,
-  Search,
   BookOpen,
   Plus,
   Trash2,
@@ -134,28 +133,21 @@ export default function RecipientPortalPage() {
         if (res.ok) {
           setUnauthorized(false);
           setData(json);
-          if (!addrName && json.user?.name) {
-            setAddrName(json.user.name);
-          }
+          if (json.user?.name) setAddrName((name) => name || json.user.name);
+        } else {
+          setLookupError(json.error || "Unable to load your gifts.");
         }
       }
+    } catch {
+      setLookupError("Unable to connect to your recipient workspace.");
     } finally {
       setLoading(false);
     }
-  }, [addrName]);
+  }, []);
 
   useEffect(() => {
     loadRecipientPortal();
   }, [loadRecipientPortal]);
-
-  async function quickSignInRecipient(email: string) {
-    await fetch("/api/auth/demo-switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    await loadRecipientPortal();
-  }
 
   async function handleClaimLookup(e: React.FormEvent) {
     e.preventDefault();
@@ -163,7 +155,7 @@ export default function RecipientPortalPage() {
     const res = await fetch("/api/auth/claim-lookup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ claimCode }),
+      body: JSON.stringify({ claimCode, email: data?.user.email }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -182,7 +174,7 @@ export default function RecipientPortalPage() {
       body: JSON.stringify({
         label: addrLabel,
         recipientName: addrName,
-        recipientPhone: addrPhone,
+        phone: addrPhone,
         addressLine1: addrLine1,
         addressLine2: addrLine2,
         city: addrCity,
@@ -210,12 +202,15 @@ export default function RecipientPortalPage() {
   }
 
   async function handleDeleteAddress(addressId: string) {
-    const res = await fetch(`/api/recipient/addresses?addressId=${addressId}`, {
+    const res = await fetch(`/api/recipient/addresses?id=${encodeURIComponent(addressId)}`, {
       method: "DELETE",
     });
     if (res.ok) {
       setBanner("Address removed from your Address Book.");
       await loadRecipientPortal();
+    } else {
+      const result = await res.json();
+      setLookupError(result.error || "Unable to remove address.");
     }
   }
 
@@ -238,60 +233,14 @@ export default function RecipientPortalPage() {
             Recipient Gift & Delivery Hub
           </h1>
           <p className="mt-2 text-xs text-[#6E665E]">
-            Enter a Snappy Gift Claim Code below, or sign in with 1 click as a seeded global recipient.
+            Sign in to view your gifts and saved delivery details, or open an invitation with its code and recipient email.
           </p>
 
-          <form onSubmit={handleClaimLookup} className="mx-auto mt-6 flex max-w-md gap-2">
-            <input
-              type="text"
-              value={claimCode}
-              onChange={(e) => setClaimCode(e.target.value)}
-              placeholder="Enter code (e.g. SNPY-NA100A)"
-              className="flex-1 rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-4 py-2.5 font-mono text-xs uppercase"
-            />
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#C85A32] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#b24d28]"
-            >
-              <Search className="h-3.5 w-3.5" />
-              <span>Unwrap</span>
-            </button>
-          </form>
+          <Link href="/auth/recipient" className="mt-6 inline-block rounded-full bg-[#C85A32] px-6 py-3 text-sm font-semibold text-white">Sign in or redeem an invitation</Link>
           {lookupError && (
             <p className="mt-2 text-xs font-semibold text-rose-600">{lookupError}</p>
           )}
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-3 text-left">
-            {[
-              {
-                name: "Alex Rivera (NA)",
-                city: "Austin, US • Ready to Claim",
-                email: "alex.rivera@acmecloud.io",
-              },
-              {
-                name: "Elena Rostova (EMEA)",
-                city: "Amsterdam, NL • Pending Carrier",
-                email: "elena.rostova@acmecloud.io",
-              },
-              {
-                name: "Yuki Tanaka (APAC)",
-                city: "Tokyo, JP • DHL Express In Transit",
-                email: "yuki.tanaka@acmecloud.io",
-              },
-            ].map((rec) => (
-              <button
-                key={rec.email}
-                onClick={() => quickSignInRecipient(rec.email)}
-                className="rounded-2xl border border-[#E6E0D6] bg-[#FAF8F5] p-4 transition hover:border-[#C85A32]"
-              >
-                <div className="text-xs font-bold text-[#141210]">{rec.name}</div>
-                <div className="mt-0.5 text-[11px] text-[#6E665E]">{rec.city}</div>
-                <div className="mt-2 text-[11px] font-bold text-[#C85A32]">
-                  Open Delivery Hub →
-                </div>
-              </button>
-            ))}
-          </div>
         </div>
       </div>
     );
@@ -339,6 +288,7 @@ export default function RecipientPortalPage() {
           {banner}
         </div>
       )}
+      {lookupError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{lookupError}</p>}
 
       {/* KPIs */}
       <div className="mt-6 grid gap-4 sm:grid-cols-3">

@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { dispatchGiftsToCampaign } from "@/lib/services/corporate-service";
@@ -23,9 +24,6 @@ export async function POST(
 
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to send gifts." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

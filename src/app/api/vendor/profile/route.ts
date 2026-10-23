@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { updateVendorProfile } from "@/lib/services/vendor-service";
@@ -13,9 +14,6 @@ export async function PATCH(request: Request) {
     const vendor = await updateVendorProfile(session.vendorId, body);
     return NextResponse.json({ vendor });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update vendor profile." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

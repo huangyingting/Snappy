@@ -1,5 +1,7 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getClaimExperienceByToken } from "@/lib/services/recipient-service";
+import { getSessionFromCookies } from "@/lib/auth";
 
 export async function GET(
   request: Request,
@@ -10,12 +12,10 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const region = searchParams.get("region") || undefined;
 
-    const data = await getClaimExperienceByToken(token, region);
+    const session = await getSessionFromCookies();
+    const data = await getClaimExperienceByToken(token, region, session?.role === "RECIPIENT" ? session.userId : undefined);
     return NextResponse.json(data);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gift invitation not found." },
-      { status: 404 }
-    );
+    return errorResponse(error);
   }
 }

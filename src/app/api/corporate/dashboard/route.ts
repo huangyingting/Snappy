@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getCorporateDashboard } from "@/lib/services/corporate-service";
@@ -12,9 +13,6 @@ export async function GET() {
     const data = await getCorporateDashboard(session.companyId);
     return NextResponse.json(data);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load corporate dashboard." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

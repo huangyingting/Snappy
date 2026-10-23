@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getVendorDashboard } from "@/lib/services/vendor-service";
@@ -12,9 +13,6 @@ export async function GET() {
     const data = await getVendorDashboard(session.vendorId);
     return NextResponse.json(data);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load vendor dashboard." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

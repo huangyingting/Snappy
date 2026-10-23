@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getAdminDashboard } from "@/lib/services/admin-service";
@@ -12,9 +13,6 @@ export async function GET() {
     const data = await getAdminDashboard();
     return NextResponse.json(data);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load admin dashboard." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

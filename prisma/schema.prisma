@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model Company {
@@ -34,13 +33,13 @@ model Vendor {
   businessName      String
   slug              String      @unique
   taxId             String
-  status            String      @default("APPROVED") // PENDING | APPROVED | SUSPENDED
+  status            String      @default("PENDING") // PENDING | APPROVED | SUSPENDED
   hqCountry         String      @default("US")
   supportedRegions  String      @default("NA") // Comma-separated: NA,EMEA,APAC,LATAM
   commissionRateBps Int         @default(1500) // 15.00%
   slaDays           Int         @default(3)
   payoutBalanceCents Int        @default(0)
-  rating            Float       @default(4.9)
+  rating            Float       @default(0)
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   users             User[]
@@ -52,6 +51,8 @@ model User {
   id                  String             @id @default(cuid())
   email               String             @unique
   passwordHash        String
+  emailVerified       DateTime?
+  sessionVersion      Int                @default(0)
   name                String
   role                String             // ADMIN | CORPORATE | VENDOR | RECIPIENT
   jobTitle            String             @default("")
@@ -130,6 +131,7 @@ model WalletTransaction {
   escrowAfter  Int
   note         String
   referenceId  String   @default("")
+  settlementReference String? @unique
   createdAt    DateTime @default(now())
 
   @@index([companyId, createdAt])
@@ -152,7 +154,7 @@ model Product {
   priceCents         Int
   wholesaleCostCents Int
   imageUrl           String
-  stockQuantity      Int                 @default(50)
+  stockQuantity      Int                 @default(0)
   supportedRegions   String              @default("NA") // Comma-separated: NA,EMEA,APAC,LATAM
   isFeatured         Boolean             @default(false)
   status             String              @default("ACTIVE") // ACTIVE | OUT_OF_STOCK | ARCHIVED
@@ -209,6 +211,8 @@ model Charity {
 
 model Campaign {
   id              String      @id @default(cuid())
+  requestKey      String?     @unique
+  requestHash     String      @default("")
   companyId       String
   company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   createdByUserId String?
@@ -260,6 +264,7 @@ model GiftSend {
 model GiftOrder {
   id                   String          @id @default(cuid())
   giftSendId           String          @unique
+  settlementReference  String?         @unique
   giftSend             GiftSend        @relation(fields: [giftSendId], references: [id], onDelete: Cascade)
   productId            String?
   product              Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
@@ -285,9 +290,9 @@ model GiftOrder {
   trackingCarrier      String          @default("")
   trackingNumber       String          @default("")
   trackingUrl          String          @default("")
-  serviceLevel         String          @default("International Priority")
-  fulfillmentWarehouse String          @default("Newark, NJ (NA-East Hub)")
-  packageWeightGrams   Int             @default(650)
+  serviceLevel         String          @default("")
+  fulfillmentWarehouse String          @default("")
+  packageWeightGrams   Int             @default(0)
   estimatedDeliveryAt  DateTime?
   addressLocked        Boolean         @default(false)
   exceptionNote        String          @default("")
@@ -328,4 +333,35 @@ model AuditLog {
   createdAt    DateTime @default(now())
 
   @@index([createdAt])
+}
+
+model AuthToken {
+  tokenHash String @id
+  userId    String
+  purpose   String
+  expiresAt DateTime
+
+  @@index([userId, purpose])
+}
+
+model RateLimit {
+  key       String @id
+  count     Int @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model EmailMessage {
+  id        String @id @default(cuid())
+  to        String
+  subject   String
+  text      String
+  attempts  Int @default(0)
+  lockedAt  DateTime?
+  sentAt    DateTime?
+  lastError String @default("")
+  createdAt DateTime @default(now())
+
+  @@index([sentAt, lockedAt, createdAt])
 }

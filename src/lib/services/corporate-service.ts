@@ -1,5 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { generateClaimCode, generateClaimToken } from "@/lib/auth";
+import { z } from "zod";
+import { AppError } from "@/lib/errors";
+import { transaction } from "@/lib/transaction";
+import { moneySchema, recipientsSchema, regionSchema } from "@/lib/validation";
+import { appUrl, queueEmail } from "@/lib/email";
+import { createHash, randomUUID } from "node:crypto";
 
 export async function getCorporateDashboard(companyId: string) {
   const company = await prisma.company.findUnique({
@@ -15,8 +21,9 @@ export async function getCorporateDashboard(companyId: string) {
           giftSends: {
             include: {
               giftOrder: {
+                omit: { vendorPayoutCents: true, platformFeeCents: true, settlementReference: true },
                 include: {
-                  product: true,
+                  product: { omit: { wholesaleCostCents: true } },
                   charity: true,
                   vendor: {
                     select: { id: true, businessName: true, hqCountry: true },
@@ -36,7 +43,21 @@ export async function getCorporateDashboard(companyId: string) {
   });
 
   if (!company) {
-    throw new Error("Corporate workspace not found.");
+    throw new AppError("Corporate workspace not found.");
+  }
+  if (company.hideRecipientAddress) {
+    for (const campaign of company.campaigns) {
+      for (const send of campaign.giftSends) {
+        if (!send.giftOrder) continue;
+        Object.assign(send.giftOrder, {
+          shippingAddressLine1: "Hidden by Recipient Privacy Shield",
+          shippingAddressLine2: "", shippingPhone: "", shippingPostalCode: "", deliveryInstructions: "",
+        });
+        send.giftOrder.shipmentEvents = send.giftOrder.shipmentEvents.map((event) =>
+          event.stage === "ADDRESS_UPDATED" ? { ...event, description: "", location: "" } : event,
+        );
+      }
+    }
   }
 
   const [collections, allActiveProducts, giftCategories] = await Promise.all([
@@ -48,6 +69,7 @@ export async function getCorporateDashboard(companyId: string) {
         collectionProducts: {
           include: {
             product: {
+              omit: { wholesaleCostCents: true },
               include: {
                 giftCategory: true,
                 vendor: {
@@ -61,6 +83,7 @@ export async function getCorporateDashboard(companyId: string) {
       orderBy: [{ isGlobal: "desc" }, { budgetTierCents: "asc" }],
     }),
     prisma.product.findMany({
+      omit: { wholesaleCostCents: true },
       where: {
         active: true,
         vendor: { status: "APPROVED" },
@@ -117,7 +140,7 @@ export async function getCorporateDashboard(companyId: string) {
 
   const totalSent = allGiftSends.length;
   const totalClaimed = allGiftSends.filter((gs) =>
-    ["CLAIMED", "PROCESSING", "SHIPPED", "DELIVERED", "DONATED"].includes(gs.status)
+    ["CLAIMED", "PROCESSING", "SHIPPED", "DELIVERED", "DONATION_PENDING", "DONATED"].includes(gs.status)
   ).length;
   const totalDelivered = allGiftSends.filter((gs) =>
     ["DELIVERED", "DONATED"].includes(gs.status)
@@ -142,18 +165,29 @@ export async function getCorporateDashboard(companyId: string) {
   };
 }
 
-export async function depositCorporateWallet(input: {
+export async function recordSettledPayment(input: {
   companyId: string;
   amountCents: number;
   note?: string;
-  actorUserId?: string;
+  actorUserId: string;
+  settlementReference: string;
 }) {
-  const amountCents = Math.round(input.amountCents);
+  const amountCents = moneySchema.parse(input.amountCents);
+  const settlementReference = z.string().trim().min(1).max(150).parse(input.settlementReference);
+  const actor = await prisma.user.findUnique({ where: { id: input.actorUserId } });
+  if (actor?.role !== "ADMIN") throw new AppError("Only administrators can record settled payments.", 403);
   if (amountCents < 1000) {
-    throw new Error("Minimum wallet deposit is $10.00 (1000 cents).");
+    throw new AppError("Minimum wallet deposit is $10.00 (1000 cents).");
   }
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
+    const existing = await tx.walletTransaction.findUnique({ where: { settlementReference } });
+    if (existing) {
+      if (existing.companyId !== input.companyId || existing.amountCents !== amountCents) {
+        throw new AppError("That settlement reference is already assigned to another payment.", 409);
+      }
+      return { company: await tx.company.findUniqueOrThrow({ where: { id: input.companyId } }), transaction: existing };
+    }
     const company = await tx.company.update({
       where: { id: input.companyId },
       data: {
@@ -169,15 +203,16 @@ export async function depositCorporateWallet(input: {
         balanceAfter: company.walletBalanceCents,
         escrowAfter: company.escrowBalanceCents,
         note: input.note?.trim() || "Corporate Wallet Budget Deposit",
-        referenceId: `DEP-${Date.now().toString(36).toUpperCase()}`,
+        referenceId: settlementReference,
+        settlementReference,
       },
     });
 
     await tx.auditLog.create({
       data: {
         actorUserId: input.actorUserId || null,
-        actorRole: "CORPORATE",
-        action: "WALLET_DEPOSIT",
+        actorRole: "ADMIN",
+        action: "SETTLED_PAYMENT_RECORDED",
         entityType: "Company",
         entityId: company.id,
         metadataJson: JSON.stringify({ amountCents, balanceAfter: company.walletBalanceCents }),
@@ -197,11 +232,17 @@ export async function createCustomCollection(input: {
   productIds: string[];
   actorUserId?: string;
 }) {
+  moneySchema.parse(input.budgetTierCents);
+  z.string().trim().min(1).max(200).parse(input.title);
   if (!input.productIds || input.productIds.length === 0) {
-    throw new Error("Please select at least one gift product for your custom collection.");
+    throw new AppError("Please select at least one gift product for your custom collection.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
+    const eligible = await tx.product.count({
+      where: { id: { in: input.productIds }, active: true, priceCents: { lte: input.budgetTierCents }, vendor: { status: "APPROVED" } },
+    });
+    if (eligible !== new Set(input.productIds).size) throw new AppError("Select approved products within the collection budget.");
     const collection = await tx.collection.create({
       data: {
         title: input.title.trim(),
@@ -248,6 +289,7 @@ export interface RecipientDispatchItem {
 }
 
 export interface CreateCampaignInput {
+  requestKey?: string;
   companyId: string;
   actorUserId?: string;
   title: string;
@@ -262,18 +304,44 @@ export interface CreateCampaignInput {
 }
 
 export async function createCampaignAndOptionallySend(input: CreateCampaignInput) {
-  const budgetCents = Math.max(1500, Math.round(input.budgetCents));
-  const recipients = input.recipients || [];
+  const budgetCents = moneySchema.min(1500).parse(input.budgetCents);
+  z.string().trim().min(1).max(200).parse(input.title);
+  z.string().trim().min(1).max(2000).parse(input.messageTemplate);
+  if (input.triggerType === "AUTOMATED_MILESTONE") throw new AppError("Automated milestones are not configured.");
+  const recipients = recipientsSchema.parse(input.recipients || []);
+  const expiresInDays = z.number().int().min(1).max(365).parse(input.expiresInDays ?? 30);
   const totalEscrowNeeded = recipients.length * budgetCents;
+  if (totalEscrowNeeded) moneySchema.parse(totalEscrowNeeded);
+  const requestKey = input.requestKey ? z.string().uuid().parse(input.requestKey) : randomUUID();
+  const requestHash = createHash("sha256").update(JSON.stringify({
+    companyId: input.companyId, title: input.title.trim(), occasion: input.occasion,
+    messageTemplate: input.messageTemplate.trim(), budgetCents, recipients,
+    collectionId: input.collectionId || null, allowCharity: input.allowCharity ?? true,
+    triggerType: input.triggerType || "MANUAL", expiresInDays,
+  })).digest("hex");
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
+    const existing = await tx.campaign.findUnique({ where: { requestKey }, include: { giftSends: true } });
+    if (existing) {
+      if (existing.companyId !== input.companyId || existing.requestHash !== requestHash) {
+        throw new AppError("The request key has already been used for a different campaign.", 409);
+      }
+      const { giftSends, ...campaign } = existing;
+      return { campaign, giftSends };
+    }
     const company = await tx.company.findUnique({ where: { id: input.companyId } });
     if (!company) {
-      throw new Error("Company not found.");
+      throw new AppError("Company not found.");
+    }
+    if (input.collectionId) {
+      const collection = await tx.collection.findFirst({
+        where: { id: input.collectionId, OR: [{ isGlobal: true }, { companyId: company.id }] },
+      });
+      if (!collection) throw new AppError("Collection not found in your workspace.");
     }
 
     if (totalEscrowNeeded > 0 && company.walletBalanceCents < totalEscrowNeeded) {
-      throw new Error(
+      throw new AppError(
         `Insufficient wallet balance. Need $${(totalEscrowNeeded / 100).toFixed(2)}, but available balance is $${(
           company.walletBalanceCents / 100
         ).toFixed(2)}.`
@@ -283,6 +351,8 @@ export async function createCampaignAndOptionallySend(input: CreateCampaignInput
     const campaign = await tx.campaign.create({
       data: {
         companyId: company.id,
+        requestKey,
+        requestHash,
         createdByUserId: input.actorUserId || null,
         title: input.title.trim(),
         occasion: input.occasion.trim() || "Spot Recognition",
@@ -292,7 +362,7 @@ export async function createCampaignAndOptionallySend(input: CreateCampaignInput
         status: "ACTIVE",
         triggerType: input.triggerType || "MANUAL",
         allowCharity: input.allowCharity ?? true,
-        expiresInDays: input.expiresInDays || 30,
+        expiresInDays,
       },
     });
 
@@ -335,7 +405,7 @@ export async function createCampaignAndOptionallySend(input: CreateCampaignInput
             companyId: company.id,
             recipientEmail: cleanEmail,
             recipientName: r.recipientName.trim(),
-            recipientUserId: existingRecipientUser?.id || null,
+            recipientUserId: existingRecipientUser?.emailVerified && existingRecipientUser.role === "RECIPIENT" ? existingRecipientUser.id : null,
             preferredRegion: (r.preferredRegion || company.primaryRegion || "NA")
               .trim()
               .toUpperCase(),
@@ -347,6 +417,7 @@ export async function createCampaignAndOptionallySend(input: CreateCampaignInput
             expiresAt,
           },
         });
+        await queueEmail(tx, cleanEmail, `${company.name} sent you a gift`, `Hello ${send.recipientName},\n\n${send.personalMessage}\n\nChoose your gift: ${appUrl()}/claim/${send.claimToken}\nInvitation code: ${send.claimCode}\nExpires: ${send.expiresAt.toISOString()}`);
         createdGiftSends.push(send);
       }
     }
@@ -376,28 +447,31 @@ export async function dispatchGiftsToCampaign(input: {
   recipients: RecipientDispatchItem[];
   actorUserId?: string;
 }) {
-  if (!input.recipients || input.recipients.length === 0) {
-    throw new Error("At least one recipient is required.");
+  const recipients = recipientsSchema.parse(input.recipients);
+  if (!recipients.length) {
+    throw new AppError("At least one recipient is required.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const campaign = await tx.campaign.findUnique({
       where: { id: input.campaignId },
     });
     if (!campaign || campaign.companyId !== input.companyId) {
-      throw new Error("Campaign not found.");
+      throw new AppError("Campaign not found.");
     }
+    if (campaign.status !== "ACTIVE") throw new AppError("Campaign is not active.");
 
     const company = await tx.company.findUnique({
       where: { id: input.companyId },
     });
     if (!company) {
-      throw new Error("Company not found.");
+      throw new AppError("Company not found.");
     }
 
-    const totalEscrowNeeded = input.recipients.length * campaign.budgetCents;
+    const totalEscrowNeeded = recipients.length * campaign.budgetCents;
+    moneySchema.parse(totalEscrowNeeded);
     if (company.walletBalanceCents < totalEscrowNeeded) {
-      throw new Error(
+      throw new AppError(
         `Insufficient wallet balance. Need $${(totalEscrowNeeded / 100).toFixed(2)}, available $${(
           company.walletBalanceCents / 100
         ).toFixed(2)}.`
@@ -429,7 +503,7 @@ export async function dispatchGiftsToCampaign(input: {
     );
 
     const createdGiftSends = [];
-    for (const r of input.recipients) {
+    for (const r of recipients) {
       const cleanEmail = r.recipientEmail.trim().toLowerCase();
       const existingRecipientUser = await tx.user.findUnique({
         where: { email: cleanEmail },
@@ -441,7 +515,7 @@ export async function dispatchGiftsToCampaign(input: {
           companyId: company.id,
           recipientEmail: cleanEmail,
           recipientName: r.recipientName.trim(),
-          recipientUserId: existingRecipientUser?.id || null,
+          recipientUserId: existingRecipientUser?.emailVerified && existingRecipientUser.role === "RECIPIENT" ? existingRecipientUser.id : null,
           preferredRegion: (r.preferredRegion || company.primaryRegion || "NA")
             .trim()
             .toUpperCase(),
@@ -453,6 +527,7 @@ export async function dispatchGiftsToCampaign(input: {
           expiresAt,
         },
       });
+      await queueEmail(tx, cleanEmail, `${company.name} sent you a gift`, `Hello ${send.recipientName},\n\n${send.personalMessage}\n\nChoose your gift: ${appUrl()}/claim/${send.claimToken}\nInvitation code: ${send.claimCode}\nExpires: ${send.expiresAt.toISOString()}`);
       createdGiftSends.push(send);
     }
 
@@ -469,6 +544,12 @@ export async function updateCorporateSettings(
     hideRecipientAddress?: boolean;
   }
 ) {
+  updates = z.object({
+    name: z.string().trim().min(1).max(150).optional(),
+    brandColor: z.string().regex(/^#[a-fA-F0-9]{6}$/).optional(),
+    primaryRegion: regionSchema.optional(),
+    hideRecipientAddress: z.boolean().optional(),
+  }).parse(updates);
   return prisma.company.update({
     where: { id: companyId },
     data: {

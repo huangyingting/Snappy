@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, use } from "react";
+import React, { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import {
   Gift,
@@ -136,6 +136,7 @@ interface ClaimExperienceData {
   activeRegion: RegionCode;
   isExpired: boolean;
   isAlreadyClaimed: boolean;
+  canSaveAddress: boolean;
   eligibleProducts: ClaimProduct[];
   giftCategories: {
     id: string;
@@ -217,6 +218,7 @@ export default function RecipientClaimPage({
   // Post-Claim Self-Service Edit & Swap State
   const [editingDelivery, setEditingDelivery] = useState(false);
   const [swappingGift, setSwappingGift] = useState(false);
+  const initializedToken = useRef<string | null>(null);
   const [swapProductId, setSwapProductId] = useState("");
   const [swapVariant, setSwapVariant] = useState("");
 
@@ -233,7 +235,8 @@ export default function RecipientClaimPage({
         } else {
           setData(json);
           setSelectedRegion(json.activeRegion);
-          if (!shippingName && json.giftSend?.recipientName) {
+          const initializing = initializedToken.current !== token;
+          if (initializing && json.giftSend?.recipientName) {
             setShippingName(json.giftSend.recipientName);
           }
           if (json.giftSend?.thankYouNote) {
@@ -253,7 +256,7 @@ export default function RecipientClaimPage({
               setShippingCountry(ord.shippingCountry || "US");
               setDeliveryInstructions(ord.deliveryInstructions || "");
             }
-          } else if (json.savedAddresses?.length > 0 && !shippingAddressLine1) {
+          } else if (initializing && json.savedAddresses?.length > 0) {
             const def =
               json.savedAddresses.find((a: SavedRecipientAddress) => a.isDefault) ||
               json.savedAddresses[0];
@@ -282,6 +285,7 @@ export default function RecipientClaimPage({
           if (json.charities?.length > 0) {
             setSelectedCharityId(json.charities[0].id);
           }
+          initializedToken.current = token;
         }
       } catch {
         setErrorMsg("Network error loading gift experience.");
@@ -289,7 +293,7 @@ export default function RecipientClaimPage({
         setLoading(false);
       }
     },
-    [token, shippingName, shippingAddressLine1]
+    [token]
   );
 
   useEffect(() => {
@@ -356,7 +360,7 @@ export default function RecipientClaimPage({
               shippingPostalCode,
               shippingCountry,
               deliveryInstructions,
-              saveToAddressBook,
+              saveToAddressBook: data?.canSaveAddress && saveToAddressBook,
               addressLabel,
               thankYouNote,
             };
@@ -370,7 +374,9 @@ export default function RecipientClaimPage({
       if (!res.ok) {
         setErrorMsg(json.error || "Redemption failed.");
       } else {
-        setBanner("🎉 Gift claimed! Your carrier logistics timeline and pre-shipment self-service controls are live below.");
+        setBanner(choiceMode === "charity"
+          ? "Donation requested. Your sender will arrange and record the transfer."
+          : "Gift selected. Your vendor will arrange shipment and add tracking details.");
         await loadClaimData(selectedRegion);
       }
     } catch {
@@ -580,12 +586,12 @@ export default function RecipientClaimPage({
               {giftSend.giftOrder.orderType === "CHARITY_DONATION" ? (
                 <div className="mt-4">
                   <h2 className="font-serif text-2xl font-semibold text-[#141210]">
-                    100% Impact Donation Completed
+                    {giftSend.giftOrder.fulfillmentStatus === "COMPLETED" ? "Donation confirmed" : "Donation requested"}
                   </h2>
                   <p className="mt-1 text-xs text-[#6E665E]">
-                    You donated {formatCurrency(giftSend.budgetCents)} on behalf of{" "}
+                    You allocated {formatCurrency(giftSend.budgetCents)} on behalf of{" "}
                     <strong>{giftSend.company.name}</strong> to{" "}
-                    <strong>{giftSend.giftOrder.charity?.name}</strong>.
+                    <strong>{giftSend.giftOrder.charity?.name}</strong>. {giftSend.giftOrder.fulfillmentStatus !== "COMPLETED" && "The platform operator will arrange and confirm the transfer."}
                   </p>
                 </div>
               ) : (
@@ -946,7 +952,7 @@ export default function RecipientClaimPage({
                   }`}
                 >
                   <HeartHandshake className="h-3.5 w-3.5" />
-                  <span>Donate 100% to Impact Charity ({charities.length})</span>
+                  <span>Choose a charity ({charities.length})</span>
                 </button>
               )}
             </div>
@@ -1054,7 +1060,7 @@ export default function RecipientClaimPage({
                             {charity.category}
                           </span>
                           <span className="text-xs font-bold text-[#1F4D3A]">
-                            100% Verified Impact Donation
+                            Full gift budget allocated
                           </span>
                         </div>
                         <h3 className="mt-2 font-serif text-xl font-semibold text-[#141210]">
@@ -1137,8 +1143,10 @@ export default function RecipientClaimPage({
                     <div className="flex items-start gap-2 rounded-2xl border border-[#1F4D3A]/20 bg-[#1F4D3A]/5 p-3 text-[11px] text-[#1F4D3A]">
                       <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
                       <span>
-                        <strong>Snappy Address Privacy Shield:</strong> Your street address is routed strictly to{" "}
-                        {selectedProduct?.vendor.businessName || "our regional partner"} for carrier dispatch and never exposed to {giftSend.company.name}.
+                        <strong>Delivery address access:</strong>{" "}
+                        {giftSend.company.hideRecipientAddress
+                          ? `Your street address is shared with ${selectedProduct?.vendor.businessName || "the fulfilling vendor"}, but hidden from ${giftSend.company.name}.`
+                          : `Your delivery address is shared with the fulfilling vendor and ${giftSend.company.name}.`}
                       </span>
                     </div>
 
@@ -1178,7 +1186,7 @@ export default function RecipientClaimPage({
                         required
                         value={shippingAddressLine1}
                         onChange={(e) => setShippingAddressLine1(e.target.value)}
-                        placeholder="742 Evergreen Terrace, Suite 4B"
+                        placeholder="Street address and unit"
                         className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
                       />
                     </div>
@@ -1253,7 +1261,7 @@ export default function RecipientClaimPage({
                       />
                     </div>
 
-                    <div className="flex items-center justify-between rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs">
+                    {data.canSaveAddress && <div className="flex items-center justify-between rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs">
                       <label className="flex items-center gap-2 font-medium text-[#141210]">
                         <input
                           type="checkbox"
@@ -1272,7 +1280,7 @@ export default function RecipientClaimPage({
                         <option value="Studio">Studio</option>
                         <option value="Travel">Travel</option>
                       </select>
-                    </div>
+                    </div>}
                   </>
                 )}
 
@@ -1303,8 +1311,8 @@ export default function RecipientClaimPage({
                     {submitting
                       ? "Confirming Redemption..."
                       : choiceMode === "charity"
-                      ? "Complete 100% Impact Donation"
-                      : "Claim My Gift & Dispatch Free"}
+                      ? "Request donation"
+                      : "Confirm gift selection"}
                   </span>
                 </button>
               </form>

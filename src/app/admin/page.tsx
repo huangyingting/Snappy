@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
   ShieldCheck,
   Package,
@@ -134,6 +135,7 @@ export default function AdminPortalPage() {
     "vendors" | "categories" | "logistics" | "collections" | "charities" | "audit"
   >("vendors");
   const [banner, setBanner] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   // New Gift Category form
   const [catName, setCatName] = useState("");
@@ -165,8 +167,12 @@ export default function AdminPortalPage() {
         if (res.ok) {
           setUnauthorized(false);
           setData(json);
+        } else {
+          setErrorMsg(json.error || "Unable to load platform operations.");
         }
       }
+    } catch {
+      setErrorMsg("Unable to connect to platform operations.");
     } finally {
       setLoading(false);
     }
@@ -176,13 +182,42 @@ export default function AdminPortalPage() {
     loadAdmin();
   }, [loadAdmin]);
 
-  async function quickSignInAdmin() {
-    await fetch("/api/auth/demo-switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@snappy.com" }),
-    });
-    await loadAdmin();
+  async function recordPayment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = Object.fromEntries(new FormData(form));
+    setErrorMsg("");
+    try {
+      const response = await fetch("/api/admin/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...fields, amountCents: Math.round(Number(fields.amount) * 100) }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Payment reconciliation failed.");
+      form.reset();
+      setBanner("Settled payment recorded in the company ledger.");
+      await loadAdmin();
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : "Unable to connect.");
+    }
+  }
+
+  async function settleDonation(event: React.FormEvent<HTMLFormElement>, orderId: string) {
+    event.preventDefault();
+    setErrorMsg("");
+    const fields = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      const response = await fetch(`/api/admin/donations/${orderId}/settle`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Donation settlement failed.");
+      setBanner("Donation settlement recorded.");
+      await loadAdmin();
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : "Unable to connect.");
+    }
   }
 
   async function handleVendorStatus(
@@ -197,6 +232,8 @@ export default function AdminPortalPage() {
     if (res.ok) {
       setBanner(`Vendor status updated to ${status}.`);
       await loadAdmin();
+    } else {
+      setErrorMsg((await res.json()).error || "Unable to update vendor.");
     }
   }
 
@@ -212,6 +249,8 @@ export default function AdminPortalPage() {
         )} from Escrow back to Corporate Wallets!`
       );
       await loadAdmin();
+    } else {
+      setErrorMsg(json.error || "Unable to reclaim expired gifts.");
     }
   }
 
@@ -235,6 +274,8 @@ export default function AdminPortalPage() {
       setCatDescription("");
       setBanner("Saved Gift Category to Global Marketplace Taxonomy.");
       await loadAdmin();
+    } else {
+      setErrorMsg((await res.json()).error || "Unable to save category.");
     }
   }
 
@@ -257,6 +298,8 @@ export default function AdminPortalPage() {
       setColProductIds([]);
       setBanner("Published new official Global Snappy Collection.");
       await loadAdmin();
+    } else {
+      setErrorMsg((await res.json()).error || "Unable to create collection.");
     }
   }
 
@@ -276,6 +319,8 @@ export default function AdminPortalPage() {
       setCharityDescription("");
       setBanner("Added new verified Charity Partner.");
       await loadAdmin();
+    } else {
+      setErrorMsg((await res.json()).error || "Unable to create charity partner.");
     }
   }
 
@@ -298,14 +343,14 @@ export default function AdminPortalPage() {
             Snappy Platform Control Tower
           </h1>
           <p className="mt-2 text-xs text-[#6E665E]">
-            Restricted to Platform Operators (`ADMIN` role). Click below to sign in with the seeded Platform Operator account.
+            Restricted to authorized platform operators.
           </p>
-          <button
-            onClick={quickSignInAdmin}
+          <Link
+            href="/auth/admin"
             className="mt-6 rounded-full bg-[#141210] px-6 py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
           >
-            Sign In as Platform Admin (admin@snappy.com) →
-          </button>
+            Sign in as an administrator →
+          </Link>
         </div>
       </div>
     );
@@ -355,6 +400,18 @@ export default function AdminPortalPage() {
           {banner}
         </div>
       )}
+      {errorMsg && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{errorMsg}</p>}
+
+      <form onSubmit={recordPayment} className="mt-6 flex flex-wrap items-end gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6">
+        <div className="w-full">
+          <h2 className="font-serif text-xl font-semibold">Reconcile a settled payment</h2>
+          <p className="mt-1 text-xs text-stone-600">Record funds already received through your banking or payment system. A unique settlement reference prevents duplicate credit.</p>
+        </div>
+        <label className="text-xs">Company<select name="companyId" required className="mt-2 block rounded-xl border p-3">{data.companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+        <label className="text-xs">Amount (USD)<input name="amount" type="number" min="10" max="1000000" step="0.01" required className="mt-2 block rounded-xl border p-3" /></label>
+        <label className="text-xs">Settlement reference<input name="settlementReference" required maxLength={150} className="mt-2 block rounded-xl border p-3" /></label>
+        <button disabled={!data.companies.length} className="rounded-full bg-[#141210] px-5 py-3 text-xs font-bold text-white disabled:opacity-50">Record payment</button>
+      </form>
 
       {/* KPIs */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -660,6 +717,17 @@ export default function AdminPortalPage() {
                 </div>
               </div>
 
+              {ord.orderType === "CHARITY_DONATION" && (
+                <div className="mt-4 text-sm">
+                  <p>Status: {ord.fulfillmentStatus}</p>
+                  {ord.fulfillmentStatus === "PENDING_SETTLEMENT" && (
+                    <form onSubmit={(event) => settleDonation(event, ord.id)} className="mt-3 flex flex-wrap gap-3">
+                      <label className="text-xs">Completed transfer reference<input name="settlementReference" required maxLength={150} className="ml-3 rounded-xl border p-3" /></label>
+                      <button className="rounded-full bg-[#141210] px-4 py-2 text-xs font-semibold text-white">Record actual donation transfer</button>
+                    </form>
+                  )}
+                </div>
+              )}
               {ord.orderType === "PHYSICAL_GIFT" && (
                 <div className="mt-4">
                   <LogisticsTimeline

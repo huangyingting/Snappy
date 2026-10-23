@@ -1,27 +1,53 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: snappy
-      POSTGRES_PASSWORD: snappy_secret
-      POSTGRES_DB: snappy_prod
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: snappy
     volumes:
-      - snappy_pgdata:/var/lib/postgresql/data
+      - snappy_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snappy -d snappy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build: .
+    image: snappy-app
+    command: ["npm", "run", "db:deploy"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL using host postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   app:
-    build: .
+    image: snappy-app
     restart: unless-stopped
     depends_on:
-      - postgres
-    environment:
-      DATABASE_URL: "postgresql://snappy:snappy_secret@postgres:5432/snappy_prod?schema=public"
-      AUTH_SECRET: "replace-with-production-32-byte-secret"
-      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      migrate:
+        condition: service_completed_successfully
+    environment: &app_environment
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?Set HTTPS NEXTAUTH_URL}
+      SMTP_URL: ${SMTP_URL:?Set SMTP_URL}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+
+  mail:
+    image: snappy-app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *app_environment
+    command: ["sh", "-c", "while true; do npm run mail:deliver; sleep 15; done"]
 
 volumes:
   snappy_pgdata:

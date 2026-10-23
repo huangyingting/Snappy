@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import {
@@ -37,10 +38,7 @@ export async function PATCH(
 
     return NextResponse.json({ order });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Order fulfillment update failed." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }
 
@@ -75,9 +73,6 @@ export async function POST(
 
     return NextResponse.json({ event }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to append carrier checkpoint." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

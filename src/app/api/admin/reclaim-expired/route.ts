@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { reclaimExpiredGifts } from "@/lib/services/admin-service";
@@ -12,9 +13,6 @@ export async function POST() {
     const result = await reclaimExpiredGifts(session.userId);
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to reclaim expired gifts." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

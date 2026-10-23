@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { updateCorporateSettings } from "@/lib/services/corporate-service";
@@ -13,9 +14,6 @@ export async function PATCH(request: Request) {
     const company = await updateCorporateSettings(session.companyId, body);
     return NextResponse.json({ company });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update corporate settings." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

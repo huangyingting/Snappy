@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { serializeRegions } from "@/lib/constants";
+import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { AppError } from "@/lib/errors";
+import { transaction } from "@/lib/transaction";
+import { productSchema, regionSchema } from "@/lib/validation";
 
 export async function getVendorDashboard(vendorId: string) {
   const vendor = await prisma.vendor.findUnique({
@@ -18,7 +23,9 @@ export async function getVendorDashboard(vendorId: string) {
             orderBy: { occurredAt: "asc" },
           },
           giftSend: {
-            include: {
+            select: {
+              recipientName: true,
+              recipientEmail: true,
               company: {
                 select: { id: true, name: true, brandColor: true },
               },
@@ -34,7 +41,7 @@ export async function getVendorDashboard(vendorId: string) {
   });
 
   if (!vendor) {
-    throw new Error("Vendor profile not found.");
+    throw new AppError("Vendor profile not found.");
   }
 
   const [globalCollections, giftCategories] = await Promise.all([
@@ -111,15 +118,15 @@ export interface CreateVendorProductInput {
 }
 
 export async function createVendorProduct(input: CreateVendorProductInput) {
+  const parsed = productSchema.parse(input);
+  input = { ...input, ...parsed };
   const vendor = await prisma.vendor.findUnique({ where: { id: input.vendorId } });
   if (!vendor) {
-    throw new Error("Vendor not found.");
+    throw new AppError("Vendor not found.");
   }
 
-  const priceCents = Math.max(500, Math.round(input.priceCents));
-  const wholesaleCostCents = input.wholesaleCostCents
-    ? Math.round(input.wholesaleCostCents)
-    : Math.round(priceCents * 0.75);
+  const priceCents = input.priceCents;
+  const wholesaleCostCents = input.wholesaleCostCents ?? 0;
   const regionsCsv = serializeRegions(
     input.supportedRegions.length > 0
       ? input.supportedRegions
@@ -150,21 +157,11 @@ export async function createVendorProduct(input: CreateVendorProductInput) {
     input.sku?.trim().toUpperCase() ||
     `${vendor.businessName.slice(0, 3).toUpperCase()}-${resolvedCategoryName
       .slice(0, 3)
-      .toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-
-  const defaultSvg = `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440" viewBox="0 0 640 440">
-      <rect width="640" height="440" rx="28" fill="#1E293B"/>
-      <text x="48" y="210" font-family="system-ui, sans-serif" font-size="28" font-weight="800" fill="#ffffff">${input.title
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")}</text>
-      <text x="48" y="255" font-family="system-ui, sans-serif" font-size="16" fill="#94A3B8">${resolvedCategoryName} • ${regionsCsv}</text>
-    </svg>`
-  )}`;
+      .toUpperCase()}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
   const status = input.status || "ACTIVE";
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const product = await tx.product.create({
       data: {
         vendorId: vendor.id,
@@ -184,7 +181,7 @@ export async function createVendorProduct(input: CreateVendorProductInput) {
         ),
         priceCents,
         wholesaleCostCents,
-        imageUrl: input.imageUrl?.trim() || defaultSvg,
+        imageUrl: parsed.imageUrl,
         stockQuantity: Math.max(0, Math.round(input.stockQuantity)),
         supportedRegions: regionsCsv,
         isFeatured: input.isFeatured ?? false,
@@ -195,37 +192,6 @@ export async function createVendorProduct(input: CreateVendorProductInput) {
         giftCategory: true,
       },
     });
-
-    if (input.collectionIds && input.collectionIds.length > 0) {
-      for (const collectionId of input.collectionIds) {
-        await tx.collectionProduct.upsert({
-          where: {
-            collectionId_productId: {
-              collectionId,
-              productId: product.id,
-            },
-          },
-          create: { collectionId, productId: product.id },
-          update: {},
-        });
-      }
-    } else {
-      // Automatically attach to matching or higher global collections
-      const matchingCollections = await tx.collection.findMany({
-        where: {
-          isGlobal: true,
-          budgetTierCents: { gte: priceCents },
-        },
-      });
-      for (const col of matchingCollections) {
-        await tx.collectionProduct.create({
-          data: {
-            collectionId: col.id,
-            productId: product.id,
-          },
-        });
-      }
-    }
 
     await tx.auditLog.create({
       data: {
@@ -272,9 +238,10 @@ export async function updateVendorProduct(
     active?: boolean;
   }
 ) {
+  updates = productSchema.partial().parse(updates);
   const existing = await prisma.product.findUnique({ where: { id: productId } });
   if (!existing || existing.vendorId !== vendorId) {
-    throw new Error("Product not found or does not belong to this vendor.");
+    throw new AppError("Product not found or does not belong to this vendor.");
   }
 
   let resolvedCategoryName = updates.category?.trim();
@@ -354,12 +321,12 @@ export async function cloneVendorProduct(
 ) {
   const source = await prisma.product.findUnique({ where: { id: productId } });
   if (!source || source.vendorId !== vendorId) {
-    throw new Error("Source product not found or does not belong to this vendor.");
+    throw new AppError("Source product not found or does not belong to this vendor.");
   }
 
-  const cloneSku = `${source.sku || "SKU"}-ED${Math.floor(10 + Math.random() * 89)}`;
+  const cloneSku = `${source.sku || "SKU"}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const cloned = await tx.product.create({
       data: {
         vendorId: source.vendorId,
@@ -368,35 +335,23 @@ export async function cloneVendorProduct(
         title: `${source.title} (Atelier Edition)`,
         description: source.description,
         category: source.category,
-        merchandisingBadge: source.merchandisingBadge || "Limited Edition",
+        merchandisingBadge: source.merchandisingBadge,
         tagsJson: source.tagsJson,
         variantsJson: source.variantsJson,
         specificationsJson: source.specificationsJson,
         priceCents: source.priceCents,
         wholesaleCostCents: source.wholesaleCostCents,
         imageUrl: source.imageUrl,
-        stockQuantity: Math.max(25, source.stockQuantity),
+        stockQuantity: 0,
         supportedRegions: source.supportedRegions,
         isFeatured: false,
-        status: "ACTIVE",
-        active: true,
+        status: "DRAFT",
+        active: false,
       },
       include: {
         giftCategory: true,
       },
     });
-
-    const existingLinks = await tx.collectionProduct.findMany({
-      where: { productId: source.id },
-    });
-    for (const link of existingLinks) {
-      await tx.collectionProduct.create({
-        data: {
-          collectionId: link.collectionId,
-          productId: cloned.id,
-        },
-      });
-    }
 
     await tx.auditLog.create({
       data: {
@@ -427,7 +382,7 @@ export async function archiveOrDeleteVendorProduct(
     include: { _count: { select: { giftOrders: true } } },
   });
   if (!existing || existing.vendorId !== vendorId) {
-    throw new Error("Product not found or does not belong to this vendor.");
+    throw new AppError("Product not found or does not belong to this vendor.");
   }
 
   if (existing._count.giftOrders > 0) {
@@ -464,6 +419,12 @@ export async function updateVendorProfile(
     slaDays?: number;
   }
 ) {
+  updates = z.object({
+    businessName: z.string().trim().min(1).max(150).optional(),
+    hqCountry: z.string().regex(/^[A-Z]{2}$/).optional(),
+    supportedRegions: z.array(regionSchema).min(1).max(4).optional(),
+    slaDays: z.number().int().min(1).max(14).optional(),
+  }).parse(updates);
   return prisma.vendor.update({
     where: { id: vendorId },
     data: {
@@ -500,18 +461,38 @@ export async function fulfillVendorOrder(input: {
   checkpointLocation?: string;
   actorUserId?: string;
 }) {
+  z.enum(["PROCESSING", "SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION"]).parse(input.fulfillmentStatus);
+  if (input.trackingUrl) z.string().url().refine((url) => new URL(url).protocol === "https:").parse(input.trackingUrl);
+  if (input.packageWeightGrams !== undefined) z.number().int().min(1).max(100000).parse(input.packageWeightGrams);
+  if (input.estimatedDeliveryAt && Number.isNaN(new Date(input.estimatedDeliveryAt).getTime())) {
+    throw new AppError("Invalid estimated delivery date.");
+  }
   const order = await prisma.giftOrder.findUnique({
     where: { id: input.orderId },
     include: { giftSend: true, vendor: true, product: true },
   });
 
   if (!order || order.vendorId !== input.vendorId) {
-    throw new Error("Order not found or not assigned to this vendor.");
+    throw new AppError("Order not found or not assigned to this vendor.");
+  }
+  const transitions: Record<string, string[]> = {
+    PENDING_VENDOR: ["PROCESSING", "SHIPPED"],
+    PROCESSING: ["SHIPPED", "EXCEPTION"],
+    SHIPPED: ["OUT_FOR_DELIVERY", "DELIVERED", "EXCEPTION"],
+    OUT_FOR_DELIVERY: ["DELIVERED", "EXCEPTION"],
+    EXCEPTION: order.shippedAt ? ["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED"] : ["PROCESSING", "SHIPPED"],
+    DELIVERED: [],
+  };
+  if (!transitions[order.fulfillmentStatus]?.includes(input.fulfillmentStatus)) {
+    throw new AppError("Invalid fulfillment status transition.");
+  }
+  if (input.fulfillmentStatus === "EXCEPTION" && !input.exceptionNote?.trim()) {
+    throw new AppError("Describe the actual fulfillment exception.");
   }
 
   if (input.fulfillmentStatus === "SHIPPED") {
     if (!input.trackingCarrier?.trim() || !input.trackingNumber?.trim()) {
-      throw new Error("Carrier name and tracking number are required when marking an order as SHIPPED.");
+      throw new AppError("Carrier name and tracking number are required when marking an order as SHIPPED.");
     }
   }
 
@@ -552,9 +533,9 @@ export async function fulfillVendorOrder(input: {
     EXCEPTION: "SHIPPED",
   };
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const updatedOrder = await tx.giftOrder.update({
-      where: { id: order.id },
+      where: { id: order.id, updatedAt: order.updatedAt },
       data: {
         fulfillmentStatus: input.fulfillmentStatus,
         trackingCarrier:
@@ -586,7 +567,7 @@ export async function fulfillVendorOrder(input: {
       },
       include: {
         product: true,
-        giftSend: true,
+        giftSend: { select: { id: true, recipientName: true, recipientEmail: true } },
         shipmentEvents: {
           orderBy: { occurredAt: "asc" },
         },
@@ -641,7 +622,7 @@ export async function fulfillVendorOrder(input: {
       where: { id: order.id },
       include: {
         product: true,
-        giftSend: true,
+        giftSend: { select: { id: true, recipientName: true, recipientEmail: true } },
         shipmentEvents: {
           orderBy: { occurredAt: "asc" },
         },
@@ -663,7 +644,7 @@ export async function appendOrderShipmentCheckpoint(input: {
     where: { id: input.orderId },
   });
   if (!order || order.vendorId !== input.vendorId) {
-    throw new Error("Order not found or not assigned to this vendor.");
+    throw new AppError("Order not found or not assigned to this vendor.");
   }
 
   return prisma.shipmentEvent.create({
@@ -673,7 +654,7 @@ export async function appendOrderShipmentCheckpoint(input: {
       title: input.title.trim(),
       description: input.description?.trim() || "",
       location: input.location?.trim() || order.fulfillmentWarehouse,
-      actorRole: "CARRIER",
+      actorRole: "VENDOR",
     },
   });
 }

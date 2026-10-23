@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { updateVendorGovernance } from "@/lib/services/admin-service";
@@ -24,9 +25,6 @@ export async function PATCH(
 
     return NextResponse.json({ vendor });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update vendor governance." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

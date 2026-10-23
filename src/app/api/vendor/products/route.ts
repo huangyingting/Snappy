@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { createVendorProduct } from "@/lib/services/vendor-service";
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
       priceCents: Number(body.priceCents),
       wholesaleCostCents: body.wholesaleCostCents ? Number(body.wholesaleCostCents) : undefined,
       imageUrl: body.imageUrl,
-      stockQuantity: Number(body.stockQuantity ?? 25),
+      stockQuantity: Number(body.stockQuantity ?? 0),
       supportedRegions: Array.isArray(body.supportedRegions) ? body.supportedRegions : [],
       isFeatured: Boolean(body.isFeatured),
       status: body.status || "ACTIVE",
@@ -44,9 +45,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ product }, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create product." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

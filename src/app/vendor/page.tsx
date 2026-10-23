@@ -136,25 +136,6 @@ interface VendorDashboardData {
   };
 }
 
-const STUDIO_GALLERY_PRESETS = [
-  { label: "ANC Studio Headphones", url: "/images/gifts/apex-anc-headphones.png" },
-  { label: "Walnut MagSafe Valet", url: "/images/gifts/apex-magsafe-valet.png" },
-  { label: "CNC Mechanical Keyboard", url: "/images/gifts/apex-mechanical-keyboard.png" },
-  { label: "Smart Temp Ceramic Mug", url: "/images/gifts/apex-smart-mug.png" },
-  { label: "Nordic Merino Throw", url: "/images/gifts/nordic-merino-throw.png" },
-  { label: "Architectural Espresso Bar", url: "/images/gifts/nordic-espresso-bar.png" },
-  { label: "Stoneware Oil Diffuser", url: "/images/gifts/nordic-aroma-diffuser.png" },
-  { label: "Brass & Opal Table Lamp", url: "/images/gifts/nordic-sculptural-lamp.png" },
-  { label: "Kyoto Gooseneck Kettle", url: "/images/gifts/kyoto-pourover-kettle.png" },
-  { label: "Uji Ceremonial Matcha", url: "/images/gifts/kyoto-matcha-set.png" },
-  { label: "Anodized Titanium Tumbler", url: "/images/gifts/kyoto-titanium-tumbler.png" },
-  { label: "Leather Weekender Duffel", url: "/images/gifts/andes-weekender-duffel.png" },
-  { label: "Cacao & Coffee Box", url: "/images/gifts/andes-cacao-tasting-box.png" },
-  { label: "Baby Alpaca Travel Set", url: "/images/gifts/andes-alpaca-travel-set.png" },
-  { label: "Botanical Apothecary Box", url: "/images/gifts/pacifica-botanical-spa.png" },
-  { label: "Ocean-Canvas Solar Pack", url: "/images/gifts/pacifica-solar-pack.png" },
-];
-
 export default function VendorPortalPage() {
   const [data, setData] = useState<VendorDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -182,21 +163,18 @@ export default function VendorPortalPage() {
   const [skuCode, setSkuCode] = useState("");
   const [skuTitle, setSkuTitle] = useState("");
   const [skuCategory, setSkuCategory] = useState("Tech");
-  const [skuBadge, setSkuBadge] = useState("Artisan Crafted");
-  const [skuPriceDollars, setSkuPriceDollars] = useState(85);
-  const [skuWholesaleDollars, setSkuWholesaleDollars] = useState(62);
-  const [skuStock, setSkuStock] = useState(40);
+  const [skuBadge, setSkuBadge] = useState("");
+  const [skuPriceDollars, setSkuPriceDollars] = useState(0);
+  const [skuWholesaleDollars, setSkuWholesaleDollars] = useState(0);
+  const [skuStock, setSkuStock] = useState(0);
   const [skuDescription, setSkuDescription] = useState("");
-  const [skuImageUrl, setSkuImageUrl] = useState("/images/gifts/apex-magsafe-valet.png");
-  const [skuTagsText, setSkuTagsText] = useState("Sustainable, Studio Edition, Fast Dispatch");
-  const [skuVariantName, setSkuVariantName] = useState("Finish / Colorway");
-  const [skuVariantOptions, setSkuVariantOptions] = useState(
-    "Obsidian Matte, Warm Travertine, Brushed Brass"
-  );
+  const [skuImageUrl, setSkuImageUrl] = useState("");
+  const [skuTagsText, setSkuTagsText] = useState("");
+  const [skuVariantName, setSkuVariantName] = useState("");
+  const [skuVariantOptions, setSkuVariantOptions] = useState("");
   const [skuOriginCountry, setSkuOriginCountry] = useState("US");
-  const [skuWeightGrams, setSkuWeightGrams] = useState(780);
+  const [skuWeightGrams, setSkuWeightGrams] = useState(0);
   const [skuRegions, setSkuRegions] = useState<RegionCode[]>(["NA", "EMEA"]);
-  const [generatingAiImage, setGeneratingAiImage] = useState(false);
 
   // Regional Settings state
   const [profileRegions, setProfileRegions] = useState<RegionCode[]>(["NA"]);
@@ -237,23 +215,14 @@ export default function VendorPortalPage() {
     loadDashboard();
   }, [loadDashboard]);
 
-  async function quickSignInVendor(email: string) {
-    await fetch("/api/auth/demo-switch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    await loadDashboard();
-  }
-
   function loadProductIntoEditor(product: VendorProduct) {
     setEditingProductId(product.id);
     setSkuCode(product.sku || "");
     setSkuTitle(product.title);
     setSkuCategory(product.category);
-    setSkuBadge(product.merchandisingBadge || "Editor's Pick");
-    setSkuPriceDollars(Math.round(product.priceCents / 100));
-    setSkuWholesaleDollars(Math.round(product.wholesaleCostCents / 100));
+    setSkuBadge(product.merchandisingBadge || "");
+    setSkuPriceDollars(product.priceCents / 100);
+    setSkuWholesaleDollars(product.wholesaleCostCents / 100);
     setSkuStock(product.stockQuantity);
     setSkuDescription(product.description);
     setSkuImageUrl(product.imageUrl);
@@ -294,44 +263,14 @@ export default function VendorPortalPage() {
     setSkuCode("");
     setSkuTitle("");
     setSkuDescription("");
-    setSkuBadge("Artisan Crafted");
-    setSkuPriceDollars(85);
-    setSkuWholesaleDollars(62);
-    setSkuStock(40);
-  }
-
-  async function handleGenerateAiStudioImage() {
-    if (!skuTitle.trim()) {
-      setErrorMsg("Enter a Product Title first so MAI-Image can compose your studio shot.");
-      return;
-    }
-    setGeneratingAiImage(true);
-    setErrorMsg("");
-    setBanner("");
-    try {
-      const res = await fetch("/api/ai/generate-product-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: skuTitle,
-          category: skuCategory,
-          description: skuDescription,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setErrorMsg(json.error || "Could not generate AI studio image.");
-      } else {
-        setSkuImageUrl(json.imageUrl);
-        setBanner(
-          `✨ Generated studio product photograph via Azure ${json.model} (${json.imageUrl}).`
-        );
-      }
-    } catch {
-      setErrorMsg("Network error while calling AI studio image generator.");
-    } finally {
-      setGeneratingAiImage(false);
-    }
+    setSkuBadge("");
+    setSkuPriceDollars(0);
+    setSkuWholesaleDollars(0);
+    setSkuStock(0);
+    setSkuImageUrl("");
+    setSkuTagsText("");
+    setSkuVariantName("");
+    setSkuVariantOptions("");
   }
 
   async function handleSaveProduct(e: React.FormEvent) {
@@ -353,8 +292,8 @@ export default function VendorPortalPage() {
         ? [{ name: skuVariantName.trim(), options: variantOptions }]
         : [];
     const specifications = {
-      originCountry: skuOriginCountry.trim() || "US",
-      weightGrams: Number(skuWeightGrams) || 650,
+      originCountry: skuOriginCountry.trim().toUpperCase(),
+      weightGrams: Number(skuWeightGrams),
       leadTimeDays: profileSla,
     };
 
@@ -446,15 +385,21 @@ export default function VendorPortalPage() {
     if (res.ok) {
       setBanner("Product archived / removed from active marketplace.");
       await loadDashboard();
+    } else {
+      setErrorMsg((await res.json()).error || "Unable to archive product.");
     }
   }
 
-  async function handleAdjustStock(productId: string, newStock: number, active: boolean) {
-    await fetch(`/api/vendor/products/${productId}`, {
+  async function handleToggleProduct(productId: string, active: boolean) {
+    const response = await fetch(`/api/vendor/products/${productId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stockQuantity: newStock, active }),
+      body: JSON.stringify({ active }),
     });
+    if (!response.ok) {
+      setErrorMsg((await response.json()).error || "Unable to update product status.");
+      return;
+    }
     await loadDashboard();
   }
 
@@ -466,15 +411,17 @@ export default function VendorPortalPage() {
       | "OUT_FOR_DELIVERY"
       | "DELIVERED"
       | "EXCEPTION",
-    defaultRegion = "NA"
+    _defaultRegion = "NA"
   ) {
     setErrorMsg("");
     setBanner("");
-    const trackingCarrier = carrierInputs[orderId] || "DHL Global Express";
-    const trackingNumber =
-      trackingInputs[orderId] ||
-      `DHL-${defaultRegion}-${Math.floor(1000000 + Math.random() * 9000000)}`;
-    const serviceLevel = serviceInputs[orderId] || "Express Priority Carbon-Neutral";
+    const trackingCarrier = carrierInputs[orderId]?.trim();
+    const trackingNumber = trackingInputs[orderId]?.trim();
+    const serviceLevel = serviceInputs[orderId]?.trim();
+    if (fulfillmentStatus === "SHIPPED" && (!trackingCarrier || !trackingNumber)) {
+      setErrorMsg("Enter the actual carrier and tracking number before dispatch.");
+      return;
+    }
     const fulfillmentWarehouse = warehouseInputs[orderId];
 
     const res = await fetch(`/api/vendor/orders/${orderId}/fulfill`, {
@@ -488,7 +435,7 @@ export default function VendorPortalPage() {
         fulfillmentWarehouse,
         exceptionNote:
           fulfillmentStatus === "EXCEPTION"
-            ? "Temporary customs / weather hold at regional hub; courier re-routing."
+            ? checkpointTitleInputs[orderId]?.trim()
             : undefined,
       }),
     });
@@ -497,7 +444,7 @@ export default function VendorPortalPage() {
       setErrorMsg(json.error || "Could not update order.");
     } else {
       setBanner(
-        `Order advanced to ${fulfillmentStatus}. Carrier checkpoint appended and recipient notified.`
+        `Order updated to ${fulfillmentStatus}. Fulfillment activity recorded.`
       );
       await loadDashboard();
     }
@@ -567,54 +514,14 @@ export default function VendorPortalPage() {
             Vendor Catalog & Carrier Logistics Portal
           </h1>
           <p className="mt-2 text-xs text-stone-600">
-            Select a seeded regional supplier below for instant 1-click access, or enroll a new vendor partner.
+            {errorMsg || "Sign in to your vendor account or apply to become a partner."}
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {[
-              {
-                name: "Apex Tech & Audio Co.",
-                regions: "NA, EMEA, APAC",
-                email: "partner@apextech.io",
-              },
-              {
-                name: "Nordic Botanicals & Home",
-                regions: "EMEA, NA, APAC",
-                email: "oliver@nordichome.eu",
-              },
-              {
-                name: "Kyoto Artisan & Roasters",
-                regions: "APAC, NA, EMEA",
-                email: "kenji@kyotoroasters.jp",
-              },
-              {
-                name: "Andes Verde Gourmet & Craft",
-                regions: "LATAM, NA, EMEA",
-                email: "sofia@andesverde.br",
-              },
-            ].map((v) => (
-              <button
-                key={v.email}
-                onClick={() => quickSignInVendor(v.email)}
-                className="flex items-center justify-between rounded-2xl border border-[#141210]/12 bg-[#FAF8F5] p-4 text-left transition hover:border-[#0F5338] hover:bg-white"
-              >
-                <div>
-                  <div className="text-xs font-bold text-[#141210]">{v.name}</div>
-                  <div className="font-mono-code text-[11px] text-[#0F5338]">
-                    Regions: {v.regions}
-                  </div>
-                </div>
-                <span className="rounded-full bg-[#0F5338] px-3 py-1 text-[11px] font-semibold text-white">
-                  Enter →
-                </span>
-              </button>
-            ))}
-          </div>
           <div className="mt-6 border-t border-[#141210]/10 pt-4">
             <Link
               href="/auth/vendor"
               className="text-xs font-semibold text-[#0F5338] hover:underline"
             >
-              Or register a new Regional Gift Vendor Partner account →
+              Sign in or register as a vendor partner →
             </Link>
           </div>
         </div>
@@ -673,20 +580,6 @@ export default function VendorPortalPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {[
-            { label: "Apex (NA)", email: "partner@apextech.io" },
-            { label: "Nordic (EMEA)", email: "oliver@nordichome.eu" },
-            { label: "Kyoto (APAC)", email: "kenji@kyotoroasters.jp" },
-            { label: "Andes (LATAM)", email: "sofia@andesverde.br" },
-          ].map((v) => (
-            <button
-              key={v.email}
-              onClick={() => quickSignInVendor(v.email)}
-              className="rounded-full border border-[#141210]/12 bg-[#FAF8F5] px-3 py-1.5 text-xs font-semibold text-[#141210] hover:bg-stone-200/70"
-            >
-              {v.label}
-            </button>
-          ))}
           <button
             onClick={() => loadDashboard()}
             className="inline-flex items-center gap-1.5 rounded-full bg-[#141210] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0F5338]"
@@ -712,7 +605,7 @@ export default function VendorPortalPage() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="atelier-card rounded-3xl p-5">
           <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
-            <span>Settled Payout Balance</span>
+            <span>Accrued Vendor Earnings</span>
             <DollarSign className="h-4 w-4 text-[#0F5338]" />
           </div>
           <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
@@ -806,7 +699,7 @@ export default function VendorPortalPage() {
       {/* TAB 1: Product & Gift Catalog Studio */}
       {activeTab === "catalog" && (
         <div className="mt-6 grid gap-8 lg:grid-cols-12">
-          {/* Left Column: Full SKU Merchandising & AI Studio Image Editor */}
+          {/* SKU merchandising */}
           <div className="lg:col-span-5">
             <form
               onSubmit={handleSaveProduct}
@@ -898,15 +791,12 @@ export default function VendorPortalPage() {
                   </label>
                   <input
                     type="number"
-                    min={10}
-                    max={1000}
+                    min={0.01}
+                    max={1000000}
+                    step={0.01}
                     required
                     value={skuPriceDollars}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setSkuPriceDollars(val);
-                      setSkuWholesaleDollars(Math.round(val * 0.74));
-                    }}
+                    onChange={(e) => setSkuPriceDollars(Number(e.target.value))}
                     className="mt-1 w-full rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-2 text-sm font-bold"
                   />
                 </div>
@@ -916,8 +806,9 @@ export default function VendorPortalPage() {
                   </label>
                   <input
                     type="number"
-                    min={5}
-                    max={1000}
+                    min={0}
+                    max={1000000}
+                    step={0.01}
                     value={skuWholesaleDollars}
                     onChange={(e) => setSkuWholesaleDollars(Number(e.target.value))}
                     className="mt-1 w-full rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-2 text-sm"
@@ -996,53 +887,27 @@ export default function VendorPortalPage() {
                 </div>
               </div>
 
-              {/* AI Studio Image Generator + Preset Picker */}
+              {/* Product photography */}
               <div className="rounded-2xl border border-[#D95D39]/25 bg-[#FAF8F5] p-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#B84322]">
-                    AI Studio Photography (MAI-Image)
+                    Product image
                   </span>
-                  <button
-                    type="button"
-                    disabled={generatingAiImage}
-                    onClick={handleGenerateAiStudioImage}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[#D95D39] px-3 py-1 text-[11px] font-bold text-white shadow-2xs transition hover:bg-[#141210] disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    <span>
-                      {generatingAiImage
-                        ? "Rendering Studio Photo..."
-                        : "Generate AI Studio Photo"}
-                    </span>
-                  </button>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <img
+                  {skuImageUrl && <img
                     src={skuImageUrl}
                     alt="SKU Preview"
                     className="h-16 w-16 rounded-xl object-cover border border-[#141210]/15 bg-white shrink-0"
-                  />
+                  />}
                   <div className="flex-1 space-y-1.5">
-                    <select
-                      value={skuImageUrl}
-                      onChange={(e) => setSkuImageUrl(e.target.value)}
-                      className="w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
-                    >
-                      {STUDIO_GALLERY_PRESETS.map((preset) => (
-                        <option key={preset.url} value={preset.url}>
-                          Studio Preset: {preset.label}
-                        </option>
-                      ))}
-                      {!STUDIO_GALLERY_PRESETS.some((p) => p.url === skuImageUrl) && (
-                        <option value={skuImageUrl}>Custom AI Studio Shot ({skuImageUrl})</option>
-                      )}
-                    </select>
                     <input
-                      type="text"
+                      type="url"
+                      required
                       value={skuImageUrl}
                       onChange={(e) => setSkuImageUrl(e.target.value)}
-                      placeholder="/images/gifts/..."
+                      placeholder="https://your-cdn.example/product.jpg"
                       className="w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1 font-mono-code text-[11px]"
                     />
                   </div>
@@ -1253,26 +1118,13 @@ export default function VendorPortalPage() {
                         >
                           <Copy className="h-3 w-3" /> Clone
                         </button>
-                        <button
-                          onClick={() =>
-                            handleAdjustStock(
-                              product.id,
-                              product.stockQuantity + 15,
-                              product.active
-                            )
-                          }
-                          className="rounded-lg border border-[#141210]/15 bg-white px-2 py-1 text-[11px] font-semibold text-[#0F5338] hover:bg-emerald-50"
-                        >
-                          +15
-                        </button>
                       </div>
 
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() =>
-                            handleAdjustStock(
+                            handleToggleProduct(
                               product.id,
-                              product.stockQuantity,
                               !product.active
                             )
                           }
@@ -1306,14 +1158,7 @@ export default function VendorPortalPage() {
         <div className="mt-6 space-y-5">
           {vendor.giftOrders.length === 0 ? (
             <div className="atelier-card rounded-3xl p-8 text-center text-xs text-stone-500">
-              No claimed gift orders routed to this vendor yet. Claim a gift in{" "}
-              <Link
-                href="/claim/snappy_demo_na_100"
-                className="font-bold text-[#D95D39] underline"
-              >
-                the live recipient experience
-              </Link>{" "}
-              to see it routed here immediately!
+              No orders yet. Orders appear here when recipients select your products.
             </div>
           ) : (
             vendor.giftOrders.map((order) => (
@@ -1428,7 +1273,7 @@ export default function VendorPortalPage() {
                           <input
                             type="text"
                             placeholder="Carrier (DHL / FedEx / Yamato)"
-                            value={carrierInputs[order.id] ?? "DHL Express"}
+                            value={carrierInputs[order.id] ?? ""}
                             onChange={(e) =>
                               setCarrierInputs((prev) => ({
                                 ...prev,
@@ -1442,7 +1287,7 @@ export default function VendorPortalPage() {
                             placeholder="Waybill / Tracking #"
                             value={
                               trackingInputs[order.id] ??
-                              `DHL-${order.recipientRegion}-884920`
+                              ""
                             }
                             onChange={(e) =>
                               setTrackingInputs((prev) => ({
@@ -1458,7 +1303,7 @@ export default function VendorPortalPage() {
                             value={
                               serviceInputs[order.id] ??
                               order.serviceLevel ??
-                              "Express Priority (2-Day)"
+                              ""
                             }
                             onChange={(e) =>
                               setServiceInputs((prev) => ({

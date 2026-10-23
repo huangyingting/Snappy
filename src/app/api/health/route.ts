@@ -3,30 +3,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const [usersCount, productsCount, vendorsCount] = await Promise.all([
-      prisma.user.count(),
-      prisma.product.count(),
-      prisma.vendor.count(),
-    ]);
-
-    return NextResponse.json({
-      status: "ok",
-      service: "snappy-gifting-platform",
-      database: process.env.DATABASE_URL?.startsWith("postgres") ? "postgresql" : "sqlite",
-      counts: {
-        users: usersCount,
-        products: productsCount,
-        vendors: vendorsCount,
-      },
-      timestamp: new Date().toISOString(),
-    });
+    await prisma.$queryRaw`SELECT 1`;
+    return NextResponse.json({ status: "ok" });
   } catch (error) {
-    return NextResponse.json(
-      {
-        status: "error",
-        message: error instanceof Error ? error.message : "Database check failed",
-      },
-      { status: 500 }
-    );
+    console.error("Database health check failed:", error);
+    return NextResponse.json({ status: "unavailable" }, { status: 503 });
   }
 }

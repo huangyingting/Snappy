@@ -1,87 +1,50 @@
-name: Snappy Platform CI
-
+name: Production readiness
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
-
+    branches: [main]
+permissions:
+  contents: read
 jobs:
-  sqlite-verify-and-build:
-    name: Lint, Typecheck, SQLite Tests & Next.js Build
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: "file:./dev.db"
-      AUTH_SECRET: "ci-test-secret-key-2026-snappy"
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Validate both SQLite and PostgreSQL Prisma schemas
-        run: npm run db:validate:all
-
-      - name: Initialize SQLite database & seed multi-role data
-        run: npm run setup
-
-      - name: Run TypeScript typecheck
-        run: npm run typecheck
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Run Vitest unit & integration test suite (SQLite)
-        run: npm test
-
-      - name: Build production Next.js application
-        run: npm run build
-
-  postgres-production-parity:
-    name: PostgreSQL Schema Migration & Integration Tests
+  verify:
     runs-on: ubuntu-latest
     services:
+      mailpit:
+        image: axllent/mailpit
+        ports: ["1025:1025"]
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: snappy
-          POSTGRES_PASSWORD: snappy_ci_password
-          POSTGRES_DB: snappy_prod
-        ports:
-          - 5432:5432
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: snappy_test
+        ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
     env:
-      DATABASE_URL: "postgresql://snappy:snappy_ci_password@localhost:5432/snappy_prod?schema=public"
-      AUTH_SECRET: "ci-postgres-secret-key-2026-snappy"
+      DATABASE_URL: file:./prisma/dev.db
+      NEXTAUTH_URL: http://localhost:3000
+      TEST_SMTP_URL: smtp://localhost:1025
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Switch Prisma schema provider to PostgreSQL
-        run: npm run db:use:postgres
-
-      - name: Generate Prisma Client & Push Schema to PostgreSQL
-        run: npx prisma generate && npx prisma db push --accept-data-loss
-
-      - name: Seed PostgreSQL database & run full integration test suite
-        run: npm run db:seed && npm test
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate && npm run db:validate:all
+      - run: npm run lint
+      - run: npm test
+      - run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://snappy:test-only-password@localhost:5432/snappy_test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://snappy:test-only-password@localhost:5432/snappy_test
+      - run: npm run typecheck

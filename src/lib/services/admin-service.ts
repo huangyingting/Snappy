@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import { AppError } from "@/lib/errors";
+import { transaction } from "@/lib/transaction";
+import { moneySchema } from "@/lib/validation";
 
 export async function getAdminDashboard() {
   const [
@@ -131,6 +135,7 @@ export async function upsertGiftCategory(input: {
   active?: boolean;
   actorUserId?: string;
 }) {
+  z.string().trim().min(1).max(100).parse(input.name);
   const cleanName = input.name.trim();
   const cleanHeadline = (input.headline || input.tagline || cleanName).trim();
   const cleanDescription = (input.description || cleanHeadline).trim();
@@ -139,7 +144,7 @@ export async function upsertGiftCategory(input: {
     input.slug?.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-") ||
     cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const category = input.id
       ? await tx.giftCategory.update({
           where: { id: input.id },
@@ -166,8 +171,7 @@ export async function upsertGiftCategory(input: {
             description: cleanDescription,
             icon: input.icon?.trim() || "Sparkles",
             accentColor: input.accentColor?.trim() || "#EA580C",
-            heroImageUrl:
-              input.heroImageUrl?.trim() || "/images/gifts/apex-anc-headphones.png",
+            heroImageUrl: input.heroImageUrl?.trim() || "",
             displayOrder: cleanOrder ?? 10,
             isFeatured: input.isFeatured ?? true,
             active: input.active ?? true,
@@ -210,7 +214,9 @@ export async function updateVendorGovernance(input: {
   commissionRateBps?: number;
   actorUserId?: string;
 }) {
-  return prisma.$transaction(async (tx) => {
+  if (input.status !== undefined) z.enum(["PENDING", "APPROVED", "SUSPENDED"]).parse(input.status);
+  if (input.commissionRateBps !== undefined) z.number().int().min(0).max(5000).parse(input.commissionRateBps);
+  return transaction(async (tx) => {
     const vendor = await tx.vendor.update({
       where: { id: input.vendorId },
       data: {
@@ -249,7 +255,14 @@ export async function createGlobalCollection(input: {
   productIds: string[];
   actorUserId?: string;
 }) {
-  return prisma.$transaction(async (tx) => {
+  z.string().trim().min(1).max(200).parse(input.title);
+  moneySchema.parse(input.budgetTierCents);
+  z.array(z.string().min(1)).min(1).max(500).parse(input.productIds);
+  return transaction(async (tx) => {
+    const count = await tx.product.count({
+      where: { id: { in: input.productIds }, active: true, priceCents: { lte: input.budgetTierCents }, vendor: { status: "APPROVED" } },
+    });
+    if (count !== new Set(input.productIds).size) throw new AppError("Select approved products within the collection budget.");
     const collection = await tx.collection.create({
       data: {
         title: input.title.trim(),
@@ -293,6 +306,9 @@ export async function createCharityPartner(input: {
   description: string;
   actorUserId?: string;
 }) {
+  z.string().trim().min(1).max(150).parse(input.name);
+  z.string().trim().min(1).max(100).parse(input.category);
+  z.string().trim().min(1).max(2000).parse(input.description);
   return prisma.charity.create({
     data: {
       name: input.name.trim(),
@@ -306,7 +322,7 @@ export async function createCharityPartner(input: {
 export async function reclaimExpiredGifts(actorUserId?: string) {
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  return transaction(async (tx) => {
     const expiredSends = await tx.giftSend.findMany({
       where: {
         status: { in: ["SENT", "OPENED"] },
@@ -328,7 +344,8 @@ export async function reclaimExpiredGifts(actorUserId?: string) {
       });
 
       if (currentCompany) {
-        const escrowDecrement = Math.min(currentCompany.escrowBalanceCents, gs.budgetCents);
+        if (currentCompany.escrowBalanceCents < gs.budgetCents) throw new AppError("Escrow ledger is inconsistent. Reconciliation is required.", 409);
+        const escrowDecrement = gs.budgetCents;
         const updatedCompany = await tx.company.update({
           where: { id: gs.companyId },
           data: {
@@ -351,6 +368,7 @@ export async function reclaimExpiredGifts(actorUserId?: string) {
 
         totalReclaimedCents += gs.budgetCents;
       }
+
     }
 
     await tx.auditLog.create({
@@ -371,5 +389,30 @@ export async function reclaimExpiredGifts(actorUserId?: string) {
       reclaimedCount: expiredSends.length,
       totalReclaimedCents,
     };
+  });
+}
+
+export async function settleCharityDonation(input: { orderId: string; settlementReference: string; actorUserId: string }) {
+  const reference = z.string().trim().min(1).max(150).parse(input.settlementReference);
+  return transaction(async (tx) => {
+    const actor = await tx.user.findUnique({ where: { id: input.actorUserId } });
+    if (actor?.role !== "ADMIN") throw new AppError("Administrator authorization required.", 403);
+    const order = await tx.giftOrder.findUnique({ where: { id: input.orderId } });
+    if (!order || order.orderType !== "CHARITY_DONATION" || !order.charityId) throw new AppError("Donation not found.", 404);
+    if (order.fulfillmentStatus === "COMPLETED" && order.settlementReference === reference) return order;
+    if (order.fulfillmentStatus !== "PENDING_SETTLEMENT") throw new AppError("Donation is not pending settlement.", 409);
+    const result = await tx.giftOrder.update({
+      where: { id: order.id },
+      data: { settlementReference: reference, fulfillmentStatus: "COMPLETED", deliveredAt: new Date() },
+    });
+    await tx.charity.update({ where: { id: order.charityId }, data: { totalDonatedCents: { increment: order.retailAmountCents } } });
+    await tx.giftSend.update({ where: { id: order.giftSendId }, data: { status: "DONATED" } });
+    await tx.auditLog.create({
+      data: {
+        actorUserId: actor.id, actorRole: "ADMIN", action: "CHARITY_DONATION_SETTLED", entityType: "GiftOrder", entityId: order.id,
+        metadataJson: JSON.stringify({ settlementReference: reference, amountCents: order.retailAmountCents }),
+      },
+    });
+    return result;
   });
 }

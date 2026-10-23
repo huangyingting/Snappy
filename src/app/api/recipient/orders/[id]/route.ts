@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/errors";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import {
@@ -61,9 +62,6 @@ export async function PATCH(
 
     return NextResponse.json({ order });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update recipient order." },
-      { status: 400 }
-    );
+    return errorResponse(error);
   }
 }

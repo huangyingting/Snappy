@@ -9,7 +9,6 @@ import {
   HeartHandshake,
   ShieldCheck,
   MapPin,
-  MessageSquareHeart,
   Clock,
   Tag,
   Repeat,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { REGIONS, formatCurrency, type RegionCode } from "@/lib/constants";
 import { LogisticsTimeline, type ShipmentCheckpoint } from "@/components/LogisticsTimeline";
+import { Disclosure } from "@/components/Disclosure";
 
 interface ClaimProduct {
   id: string;
@@ -459,7 +459,7 @@ export default function RecipientClaimPage({
 
   if (loading && !data) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-16 text-center text-sm text-[#6E665E]">
+      <div className="mx-auto max-w-5xl px-4 py-8 text-center text-sm text-[#6E665E]">
         Preparing your bespoke Snappy Atelier gift unwrapping experience...
       </div>
     );
@@ -467,8 +467,8 @@ export default function RecipientClaimPage({
 
   if (!data) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center">
-        <div className="rounded-3xl border border-rose-200 bg-white p-8 shadow-xs">
+      <div className="mx-auto max-w-xl px-4 py-8 text-center">
+        <div className="rounded-2xl border border-rose-200 bg-white p-5 shadow-xs">
           <h1 className="font-serif text-2xl font-semibold text-[#141210]">
             Gift Invitation Not Found
           </h1>
@@ -504,9 +504,9 @@ export default function RecipientClaimPage({
   const swapTargetProduct = eligibleProducts.find((p) => p.id === swapProductId);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       {/* Luxury Atelier Invitation Card */}
-      <div className="relative overflow-hidden rounded-[2rem] border border-[#E6E0D6] bg-[#141210] p-8 text-[#FAF8F5] shadow-xl sm:p-12">
+      <div className="relative overflow-hidden rounded-2xl border border-[#E6E0D6] bg-[#141210] p-5 text-[#FAF8F5] shadow-sm">
         <div className="pointer-events-none absolute -top-24 -right-24 h-80 w-80 rounded-full bg-[#C85A32]/25 blur-3xl" />
         <div className="relative flex flex-wrap items-center justify-between gap-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#D4AF37]/40 bg-[#D4AF37]/15 px-4 py-1.5 text-xs font-bold text-[#F3E5AB]">
@@ -515,23 +515,20 @@ export default function RecipientClaimPage({
               {giftSend.company.name} • {giftSend.campaign.occasion}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-white/15 bg-white/10 px-3.5 py-1 font-mono text-xs font-semibold text-[#E8DFD1]">
-              Code: {giftSend.claimCode}
-            </span>
-          </div>
         </div>
 
-        <h1 className="mt-5 font-serif text-3xl font-semibold tracking-tight sm:text-5xl">
+        <h1 className="mt-3 font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
           {isAlreadyClaimed
-            ? `Your curated gift is on its way, ${giftSend.recipientName}.`
-            : `A bespoke gift awaits you, ${giftSend.recipientName}.`}
+            ? `Your gift, ${giftSend.recipientName}.`
+            : `Choose your gift, ${giftSend.recipientName}.`}
         </h1>
 
-        <blockquote className="mt-5 max-w-3xl rounded-2xl border border-white/15 bg-white/5 p-5 font-serif text-base italic leading-relaxed text-[#F5EFE6]">
-          &ldquo;{giftSend.personalMessage}&rdquo;
-        </blockquote>
-
+        <Disclosure title={`Message from ${giftSend.company.name}`} className="relative mt-3">
+          <blockquote className="font-serif text-sm italic leading-relaxed text-stone-700">
+            &ldquo;{giftSend.personalMessage}&rdquo;
+          </blockquote>
+          <p className="mt-2 break-all font-mono text-xs text-stone-500">Invitation: {giftSend.claimCode}</p>
+        </Disclosure>
         {!unwrapped && !isExpired && !isAlreadyClaimed && (
           <div className="mt-7">
             <button
@@ -545,7 +542,7 @@ export default function RecipientClaimPage({
         )}
 
         {isExpired && !isAlreadyClaimed && (
-          <div className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-950/50 p-6">
+          <div className="mt-4 rounded-2xl border border-rose-500/30 bg-rose-950/50 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-rose-200">
               <Clock className="h-4 w-4" />
               <span>This Gift Invitation Has Expired</span>
@@ -559,21 +556,21 @@ export default function RecipientClaimPage({
       </div>
 
       {banner && (
-        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-xs font-bold text-emerald-900">
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 text-xs font-bold text-emerald-900">
           {banner}
         </div>
       )}
       {errorMsg && (
-        <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3.5 text-xs font-bold text-rose-700">
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-3.5 text-xs font-bold text-rose-700">
           {errorMsg}
         </div>
       )}
 
       {/* ALREADY CLAIMED VIEW: Multi-Checkpoint Carrier Logistics + Self-Service Pre-Shipment Controls */}
       {isAlreadyClaimed && giftSend.giftOrder && (
-        <div className="mt-8 grid gap-8 lg:grid-cols-12">
-          <div className="lg:col-span-7 space-y-6">
-            <div className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs">
+        <div className="mt-4 grid gap-4 lg:grid-cols-12">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="rounded-full bg-[#1F4D3A]/10 px-3 py-1 text-xs font-bold text-[#1F4D3A]">
                   Status: {giftSend.giftOrder.fulfillmentStatus}
@@ -819,7 +816,7 @@ export default function RecipientClaimPage({
                   )}
 
                   {/* Full 5-Stage Carrier Logistics Timeline */}
-                  <div className="mt-6">
+                  <div className="mt-4">
                     <LogisticsTimeline
                       fulfillmentStatus={giftSend.giftOrder.fulfillmentStatus}
                       trackingCarrier={giftSend.giftOrder.trackingCarrier}
@@ -842,14 +839,11 @@ export default function RecipientClaimPage({
           </div>
 
           <div className="lg:col-span-5">
-            <div className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs">
-              <div className="flex items-center gap-2 font-serif text-lg font-semibold text-[#141210]">
-                <MessageSquareHeart className="h-5 w-5 text-[#C85A32]" />
-                <span>Gratitude Note to {giftSend.company.name}</span>
-              </div>
-              <form onSubmit={handleSavePostClaimThankYou} className="mt-4 space-y-3">
+            <Disclosure title="Send a thank-you note">
+              <form onSubmit={handleSavePostClaimThankYou} className="space-y-3">
                 <textarea
-                  rows={4}
+                  rows={2}
+                  aria-label="Thank-you note"
                   value={thankYouNote}
                   onChange={(e) => setThankYouNote(e.target.value)}
                   placeholder="Share a note of appreciation with your sender..."
@@ -862,24 +856,24 @@ export default function RecipientClaimPage({
                   Post to {giftSend.company.name} Gratitude Wall
                 </button>
               </form>
-            </div>
+            </Disclosure>
           </div>
         </div>
       )}
 
       {/* ACTIVE UNWRAPPED SELECTION VIEW */}
       {unwrapped && !isExpired && !isAlreadyClaimed && (
-        <div className="mt-8 space-y-8">
+        <div className="mt-4 space-y-4">
           {/* Step 1: Delivery Region & Gift Category Filter Bar */}
-          <div className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs">
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
               <div>
                 <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#C85A32]">
                   <Globe className="h-4 w-4" />
-                  <span>Step 1 • Select Your Delivery Territory & Category</span>
+                  <span>Delivery region</span>
                 </div>
                 <p className="mt-1 text-xs text-[#6E665E]">
-                  Your gift catalog dynamically adapts to show studio items stocked in-region with zero customs duties.
+                  Choose where your gift will be delivered.
                 </p>
               </div>
 
@@ -891,11 +885,10 @@ export default function RecipientClaimPage({
                       key={r.code}
                       type="button"
                       onClick={() => handleRegionSwitch(r.code)}
-                      className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-                        active
-                          ? "bg-[#141210] text-[#FAF8F5] shadow-xs"
-                          : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#575049] hover:border-[#141210]"
-                      }`}
+                      className={`rounded-full px-4 py-2 text-xs font-bold transition ${active
+                        ? "bg-[#141210] text-[#FAF8F5] shadow-xs"
+                        : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#575049] hover:border-[#141210]"
+                        }`}
                     >
                       {r.code}
                     </button>
@@ -905,79 +898,87 @@ export default function RecipientClaimPage({
             </div>
 
             {/* Category Filter Pills & Physical vs Charity Mode */}
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#E6E0D6] pt-4">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Tag className="mr-1 h-3.5 w-3.5 text-[#C85A32]" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setChoiceMode("physical");
-                    setSelectedCategory("ALL");
-                  }}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                    choiceMode === "physical" && selectedCategory === "ALL"
-                      ? "bg-[#C85A32] text-white"
-                      : "bg-[#FAF8F5] text-[#575049] hover:bg-[#EFECE6]"
-                  }`}
-                >
-                  All Categories ({eligibleProducts.length})
-                </button>
-                {giftCategories?.map((cat) => (
+            <Disclosure title={choiceMode === "charity" ? "Charity choices" : `Categories & charity choices${selectedCategory !== "ALL" ? ` · ${selectedCategory}` : ""}`} className="mt-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Tag className="mr-1 h-3.5 w-3.5 text-[#C85A32]" />
                   <button
-                    key={cat.id}
                     type="button"
                     onClick={() => {
                       setChoiceMode("physical");
-                      setSelectedCategory(cat.name);
+                      setSelectedCategory("ALL");
                     }}
-                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                      choiceMode === "physical" && selectedCategory === cat.name
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${choiceMode === "physical" && selectedCategory === "ALL"
+                      ? "bg-[#C85A32] text-white"
+                      : "bg-[#FAF8F5] text-[#575049] hover:bg-[#EFECE6]"
+                      }`}
+                  >
+                    All Categories ({eligibleProducts.length})
+                  </button>
+                  {giftCategories?.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => {
+                        setChoiceMode("physical");
+                        setSelectedCategory(cat.name);
+                      }}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${choiceMode === "physical" && selectedCategory === cat.name
                         ? "bg-[#C85A32] text-white"
                         : "bg-[#FAF8F5] text-[#575049] hover:bg-[#EFECE6]"
-                    }`}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
+                        }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
 
-              {giftSend.campaign.allowCharity && (
-                <button
-                  type="button"
-                  onClick={() => setChoiceMode("charity")}
-                  className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold transition ${
-                    choiceMode === "charity"
+                {giftSend.campaign.allowCharity && (
+                  <button
+                    type="button"
+                    onClick={() => setChoiceMode("charity")}
+                    className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold transition ${choiceMode === "charity"
                       ? "bg-[#1F4D3A] text-white"
                       : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#1F4D3A] hover:border-[#1F4D3A]"
-                  }`}
-                >
-                  <HeartHandshake className="h-3.5 w-3.5" />
-                  <span>Choose a charity ({charities.length})</span>
-                </button>
-              )}
-            </div>
+                      }`}
+                  >
+                    <HeartHandshake className="h-3.5 w-3.5" />
+                    <span>Choose a charity ({charities.length})</span>
+                  </button>
+                )}
+              </div>
+            </Disclosure>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-12">
+          <a href="#gift-delivery" className="inline-flex min-h-11 items-center rounded-lg bg-[#141210] px-3 py-2 text-xs font-semibold text-white lg:hidden">Continue to delivery</a>
+
+          <div className="grid gap-4 lg:grid-cols-12">
             {/* Left 7 Columns: Editorial Gift Cards or Charity Impact Cards */}
             <div className="lg:col-span-7">
               {choiceMode === "physical" ? (
-                <div className="grid gap-5 sm:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3">
                   {filteredProducts.map((product) => {
                     const isSelected = product.id === selectedProduct?.id;
-                    const variants = parseList(product.variantsJson);
-                    const tags = parseList(product.tagsJson);
                     return (
                       <div
                         key={product.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Choose ${product.title}`}
+                        aria-pressed={isSelected}
                         onClick={() => handleSelectProduct(product)}
-                        className={`group cursor-pointer overflow-hidden rounded-3xl border bg-white transition ${
-                          isSelected
-                            ? "border-[#C85A32] ring-2 ring-[#C85A32]/25 shadow-md"
-                            : "border-[#E6E0D6] hover:border-[#141210]/40"
-                        }`}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSelectProduct(product);
+                          }
+                        }}
+                        className={`group cursor-pointer overflow-hidden rounded-2xl border bg-white transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#C85A32] ${isSelected
+                          ? "border-[#C85A32] ring-2 ring-[#C85A32]/25 shadow-md"
+                          : "border-[#E6E0D6] hover:border-[#141210]/40"
+                          }`}
                       >
-                        <div className="relative aspect-square overflow-hidden bg-[#F5F1EA]">
+                        <div className="relative aspect-[4/3] overflow-hidden bg-[#F5F1EA]">
                           <img
                             src={product.imageUrl}
                             alt={product.title}
@@ -989,7 +990,7 @@ export default function RecipientClaimPage({
                             </span>
                           )}
                         </div>
-                        <div className="p-5">
+                        <div className="p-3">
                           <div className="flex items-center justify-between text-[11px]">
                             <span className="font-bold uppercase tracking-wider text-[#C85A32]">
                               {product.category}
@@ -1004,30 +1005,6 @@ export default function RecipientClaimPage({
                           <p className="mt-1 line-clamp-2 text-xs text-[#6E665E]">
                             {product.description}
                           </p>
-                          {variants.length > 0 && (
-                            <div className="mt-2.5 flex flex-wrap gap-1">
-                              {variants.map((v) => (
-                                <span
-                                  key={v}
-                                  className="rounded-md border border-[#E6E0D6] bg-[#FAF8F5] px-2 py-0.5 text-[10px] font-medium text-[#575049]"
-                                >
-                                  {v}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          {tags.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {tags.slice(0, 3).map((t) => (
-                                <span
-                                  key={t}
-                                  className="text-[10px] font-medium text-[#6E665E]"
-                                >
-                                  #{t}
-                                </span>
-                              ))}
-                            </div>
-                          )}
                           <div className="mt-4 flex items-center justify-between border-t border-[#EFECE6] pt-3 text-xs">
                             <span className="text-[#6E665E]">
                               Atelier: {product.vendor.businessName}
@@ -1048,12 +1025,21 @@ export default function RecipientClaimPage({
                     return (
                       <div
                         key={charity.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Choose ${charity.name}`}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedCharityId(charity.id)}
-                        className={`cursor-pointer rounded-3xl border bg-white p-6 transition ${
-                          isSelected
-                            ? "border-[#1F4D3A] ring-2 ring-[#1F4D3A]/20 shadow-md"
-                            : "border-[#E6E0D6] hover:border-[#1F4D3A]"
-                        }`}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedCharityId(charity.id);
+                          }
+                        }}
+                        className={`cursor-pointer rounded-2xl border bg-white p-4 transition ${isSelected
+                          ? "border-[#1F4D3A] ring-2 ring-[#1F4D3A]/20 shadow-md"
+                          : "border-[#E6E0D6] hover:border-[#1F4D3A]"
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="rounded-full bg-[#1F4D3A]/10 px-3 py-1 text-xs font-bold text-[#1F4D3A]">
@@ -1077,12 +1063,13 @@ export default function RecipientClaimPage({
             {/* Right 5 Columns: Variant Selector, Saved Address Book & Privacy-First Checkout */}
             <div className="lg:col-span-5">
               <form
+                id="gift-delivery"
                 onSubmit={handleRedeemSubmit}
-                className="sticky top-24 space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+                className="scroll-mt-32 space-y-3 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs lg:sticky lg:top-20"
               >
                 <div className="border-b border-[#EFECE6] pb-3">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#C85A32]">
-                    Step 2 • Personalize & Confirm Delivery
+                    Your selection
                   </span>
                   <h3 className="mt-1 font-serif text-xl font-semibold text-[#141210]">
                     {choiceMode === "charity"
@@ -1105,11 +1092,10 @@ export default function RecipientClaimPage({
                               key={variant}
                               type="button"
                               onClick={() => setSelectedVariant(variant)}
-                              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                                selectedVariant === variant
-                                  ? "bg-[#141210] text-[#FAF8F5]"
-                                  : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#575049]"
-                              }`}
+                              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${selectedVariant === variant
+                                ? "bg-[#141210] text-[#FAF8F5]"
+                                : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#575049]"
+                                }`}
                             >
                               {variant}
                             </button>
@@ -1150,12 +1136,13 @@ export default function RecipientClaimPage({
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
+                        <label htmlFor="shipping-name" className="block text-xs font-semibold text-[#575049]">
                           Recipient Full Name *
                         </label>
                         <input
+                          id="shipping-name"
                           type="text"
                           required
                           value={shippingName}
@@ -1163,25 +1150,14 @@ export default function RecipientClaimPage({
                           className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
-                          Phone (Courier SMS)
-                        </label>
-                        <input
-                          type="text"
-                          value={shippingPhone}
-                          onChange={(e) => setShippingPhone(e.target.value)}
-                          placeholder="+1-512-555-0148"
-                          className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
-                        />
-                      </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[#575049]">
+                      <label htmlFor="shipping-street" className="block text-xs font-semibold text-[#575049]">
                         Street Address *
                       </label>
                       <input
+                        id="shipping-street"
                         type="text"
                         required
                         value={shippingAddressLine1}
@@ -1193,10 +1169,11 @@ export default function RecipientClaimPage({
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
+                        <label htmlFor="shipping-city" className="block text-xs font-semibold text-[#575049]">
                           City *
                         </label>
                         <input
+                          id="shipping-city"
                           type="text"
                           required
                           value={shippingCity}
@@ -1206,25 +1183,11 @@ export default function RecipientClaimPage({
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
-                          State / Province
-                        </label>
-                        <input
-                          type="text"
-                          value={shippingState}
-                          onChange={(e) => setShippingState(e.target.value)}
-                          placeholder="TX / NH"
-                          className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
+                        <label htmlFor="shipping-postal" className="block text-xs font-semibold text-[#575049]">
                           Postal / ZIP Code *
                         </label>
                         <input
+                          id="shipping-postal"
                           type="text"
                           required
                           value={shippingPostalCode}
@@ -1233,11 +1196,14 @@ export default function RecipientClaimPage({
                           className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
                         />
                       </div>
+                    </div>
+                    <div>
                       <div>
-                        <label className="block text-xs font-semibold text-[#575049]">
+                        <label htmlFor="shipping-country" className="block text-xs font-semibold text-[#575049]">
                           Country Code *
                         </label>
                         <input
+                          id="shipping-country"
                           type="text"
                           required
                           maxLength={2}
@@ -1248,18 +1214,14 @@ export default function RecipientClaimPage({
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-[#575049]">
-                        Courier Drop-Off / Gate Instructions
-                      </label>
-                      <input
-                        type="text"
-                        value={deliveryInstructions}
-                        onChange={(e) => setDeliveryInstructions(e.target.value)}
-                        placeholder="Leave with concierge or ring #402"
-                        className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
-                      />
-                    </div>
+                    <Disclosure title="Phone, state & delivery instructions">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs">Phone<input type="tel" value={shippingPhone} onChange={(e) => setShippingPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 p-2" /></label>
+                        <label className="text-xs">State / province<input value={shippingState} onChange={(e) => setShippingState(e.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 p-2" /></label>
+                        <label className="text-xs sm:col-span-2">Address line 2<input value={shippingAddressLine2} onChange={(e) => setShippingAddressLine2(e.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 p-2" /></label>
+                        <label className="text-xs sm:col-span-2">Delivery instructions<input value={deliveryInstructions} onChange={(e) => setDeliveryInstructions(e.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 p-2" /></label>
+                      </div>
+                    </Disclosure>
 
                     {data.canSaveAddress && <div className="flex items-center justify-between rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs">
                       <label className="flex items-center gap-2 font-medium text-[#141210]">
@@ -1284,7 +1246,7 @@ export default function RecipientClaimPage({
                   </>
                 )}
 
-                <div>
+                <Disclosure title="Add a thank-you note">
                   <label className="block text-xs font-semibold text-[#575049]">
                     Gratitude Note to {giftSend.company.name} (Optional)
                   </label>
@@ -1295,7 +1257,7 @@ export default function RecipientClaimPage({
                     placeholder="Thank you so much for this thoughtful milestone gift!"
                     className="mt-1 w-full rounded-xl border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 text-xs"
                   />
-                </div>
+                </Disclosure>
 
                 <button
                   type="submit"
@@ -1311,8 +1273,8 @@ export default function RecipientClaimPage({
                     {submitting
                       ? "Confirming Redemption..."
                       : choiceMode === "charity"
-                      ? "Request donation"
-                      : "Confirm gift selection"}
+                        ? "Request donation"
+                        : "Confirm gift selection"}
                   </span>
                 </button>
               </form>

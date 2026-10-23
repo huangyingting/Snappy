@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound, useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { REGIONS } from "@/lib/constants";
+import { Disclosure } from "@/components/Disclosure";
 
 const roles = {
   corporate: { title: "Your gifting workspace", description: "Create a company workspace or sign in to manage campaigns and funding." },
@@ -66,20 +67,22 @@ export default function RoleAuthPage({ params }: { params: Promise<{ role: strin
     }
   }
 
-  const inputClass = "mt-2 w-full rounded-xl border border-stone-200 bg-[#FAF8F5] px-4 py-3 text-sm";
+  const inputClass = "mt-1 w-full rounded-lg border border-stone-200 bg-[#FAF8F5] px-3 py-2.5 text-sm";
   return (
-    <div className="mx-auto grid max-w-5xl gap-12 px-6 py-16 lg:grid-cols-2">
+    <div className="mx-auto grid max-w-4xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-2">
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-[#C85A32]">Snappy Atelier</p>
-        <h1 className="mt-5 font-display text-4xl">{meta.title}</h1>
-        <p className="mt-5 leading-relaxed text-stone-600">{meta.description}</p>
-        <nav aria-label="Choose a portal" className="mt-8 flex flex-wrap gap-3 text-xs font-semibold">
-          {Object.keys(roles).map((key) => <Link key={key} href={`/auth/${key}`} className="rounded-full border border-stone-300 px-3 py-2 capitalize">{key}</Link>)}
-        </nav>
-        {roleSlug === "corporate" && <p className="mt-8 text-sm text-stone-500">Workspaces start with a zero balance. Contact your platform administrator to reconcile a real payment before sending gifts.</p>}
+        <h1 className="mt-3 font-display text-3xl">{meta.title}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-stone-600">{meta.description}</p>
+        <Disclosure title="Other workspaces" className="mt-3">
+          <nav aria-label="Choose a portal" className="flex flex-wrap gap-2 text-xs font-semibold">
+            {Object.keys(roles).map((key) => <Link key={key} href={`/auth/${key}`} className="rounded-full border border-stone-300 px-3 py-2 capitalize">{key}</Link>)}
+          </nav>
+        </Disclosure>
+        {roleSlug === "corporate" && <p className="mt-4 text-sm text-stone-500">Workspaces start with a zero balance. Contact your platform administrator to reconcile a real payment before sending gifts.</p>}
       </div>
-      <div className="rounded-3xl border border-stone-200 bg-white p-8">
-        <div className="mb-6 flex flex-wrap gap-2 text-xs font-semibold">
+      <div className="rounded-2xl border border-stone-200 bg-white p-5">
+        <div className="mb-4 flex flex-wrap gap-2 text-xs font-semibold">
           {(["login", ...(roleSlug !== "admin" ? ["enroll"] : []), ...(roleSlug === "recipient" ? ["claim"] : [])] as const).map((value) => (
             <button key={value} type="button" onClick={() => { setMode(value as typeof mode); setError(""); setMessage(""); }} className={`rounded-full px-4 py-2 ${mode === value ? "bg-[#141210] text-white" : "bg-stone-100"}`}>
               {value === "login" ? "Sign in" : value === "enroll" ? "Create account" : "Redeem invitation"}

@@ -31,6 +31,8 @@ import {
   LogisticsTimeline,
   type ShipmentCheckpointItem,
 } from "@/components/LogisticsTimeline";
+import { Disclosure } from "@/components/Disclosure";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 
 interface GiftCategoryItem {
   id: string;
@@ -140,7 +142,7 @@ export default function VendorPortalPage() {
   const [data, setData] = useState<VendorDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
-  const [activeTab, setActiveTab] = useState<"catalog" | "orders" | "settings">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "orders" | "settings">("orders");
   const [banner, setBanner] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
@@ -160,6 +162,7 @@ export default function VendorPortalPage() {
 
   // SKU Studio Form (supports Create & Edit)
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [productEditorOpen, setProductEditorOpen] = useState(false);
   const [skuCode, setSkuCode] = useState("");
   const [skuTitle, setSkuTitle] = useState("");
   const [skuCategory, setSkuCategory] = useState("Tech");
@@ -216,6 +219,7 @@ export default function VendorPortalPage() {
   }, [loadDashboard]);
 
   function loadProductIntoEditor(product: VendorProduct) {
+    setProductEditorOpen(true);
     setEditingProductId(product.id);
     setSkuCode(product.sku || "");
     setSkuTitle(product.title);
@@ -259,6 +263,7 @@ export default function VendorPortalPage() {
   }
 
   function resetEditor() {
+    setProductEditorOpen(false);
     setEditingProductId(null);
     setSkuCode("");
     setSkuTitle("");
@@ -497,7 +502,7 @@ export default function VendorPortalPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-stone-500">
+      <div className="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-stone-500">
         Loading Atelier Vendor Catalog & Logistics Studio...
       </div>
     );
@@ -506,17 +511,17 @@ export default function VendorPortalPage() {
   if (unauthorized || !data) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-14">
-        <div className="atelier-card rounded-3xl p-8 text-center">
+        <div className="atelier-card rounded-2xl p-5 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0F5338] text-white">
             <Package className="h-6 w-6" />
           </div>
-          <h1 className="font-display text-3xl font-semibold text-[#141210]">
+          <h1 className="font-display text-2xl font-semibold text-[#141210]">
             Vendor Catalog & Carrier Logistics Portal
           </h1>
           <p className="mt-2 text-xs text-stone-600">
             {errorMsg || "Sign in to your vendor account or apply to become a partner."}
           </p>
-          <div className="mt-6 border-t border-[#141210]/10 pt-4">
+          <div className="mt-4 border-t border-[#141210]/10 pt-4">
             <Link
               href="/auth/vendor"
               className="text-xs font-semibold text-[#0F5338] hover:underline"
@@ -542,20 +547,19 @@ export default function VendorPortalPage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
       {/* Header */}
-      <div className="atelier-card flex flex-col justify-between gap-4 rounded-3xl p-6 sm:flex-row sm:items-center">
+      <div className="atelier-card flex flex-col justify-between gap-4 rounded-2xl p-4 sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full bg-[#0F5338] px-3 py-0.5 font-mono-code text-[11px] font-bold text-white">
-              ATELIER VENDOR STUDIO
+              Vendor workspace
             </span>
             <span
-              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                vendor.status === "APPROVED"
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-amber-100 text-amber-800"
-              }`}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${vendor.status === "APPROVED"
+                ? "bg-emerald-100 text-emerald-800"
+                : "bg-amber-100 text-amber-800"
+                }`}
             >
               {vendor.status}
             </span>
@@ -563,7 +567,7 @@ export default function VendorPortalPage() {
               HQ: {vendor.hqCountry} • SLA: {vendor.slaDays}d
             </span>
           </div>
-          <h1 className="font-display mt-2 text-3xl font-semibold text-[#141210]">
+          <h1 className="font-display mt-2 text-2xl font-semibold text-[#141210]">
             {vendor.businessName}
           </h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-600">
@@ -602,108 +606,87 @@ export default function VendorPortalPage() {
       )}
 
       {/* KPI Cards */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="atelier-card rounded-3xl p-5">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
-            <span>Accrued Vendor Earnings</span>
-            <DollarSign className="h-4 w-4 text-[#0F5338]" />
+      <Disclosure title="Earnings & inventory overview" className="mt-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="atelier-card rounded-2xl p-5">
+            <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
+              <span>Accrued Vendor Earnings</span>
+              <DollarSign className="h-4 w-4 text-[#0F5338]" />
+            </div>
+            <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
+              {formatCurrency(metrics.payoutBalanceCents)}
+            </div>
+            <div className="mt-1 text-[11px] text-stone-500">
+              Net after {vendor.commissionRateBps / 100}% marketplace commission
+            </div>
           </div>
-          <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
-            {formatCurrency(metrics.payoutBalanceCents)}
-          </div>
-          <div className="mt-1 text-[11px] text-stone-500">
-            Net after {vendor.commissionRateBps / 100}% marketplace commission
-          </div>
-        </div>
 
-        <div className="atelier-card rounded-3xl p-5">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
-            <span>Active Regional SKUs</span>
-            <Layers className="h-4 w-4 text-[#D95D39]" />
+          <div className="atelier-card rounded-2xl p-5">
+            <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
+              <span>Active Regional SKUs</span>
+              <Layers className="h-4 w-4 text-[#D95D39]" />
+            </div>
+            <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
+              {metrics.activeProducts} / {metrics.totalProducts}
+            </div>
+            <div className="mt-1 text-[11px] text-stone-500">
+              {metrics.lowStockProductsCount > 0
+                ? `${metrics.lowStockProductsCount} SKU(s) near restock threshold`
+                : "All SKUs healthy inventory"}
+            </div>
           </div>
-          <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
-            {metrics.activeProducts} / {metrics.totalProducts}
-          </div>
-          <div className="mt-1 text-[11px] text-stone-500">
-            {metrics.lowStockProductsCount > 0
-              ? `${metrics.lowStockProductsCount} SKU(s) near restock threshold`
-              : "All SKUs healthy inventory"}
-          </div>
-        </div>
 
-        <div className="atelier-card rounded-3xl p-5">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
-            <span>Awaiting Atelier Dispatch</span>
-            <Clock className="h-4 w-4 text-amber-600" />
+          <div className="atelier-card rounded-2xl p-5">
+            <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
+              <span>Awaiting Atelier Dispatch</span>
+              <Clock className="h-4 w-4 text-amber-600" />
+            </div>
+            <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
+              {metrics.pendingFulfillmentCount}
+            </div>
+            <div className="mt-1 text-[11px] text-stone-500">
+              Committed SLA: {vendor.slaDays} business days
+            </div>
           </div>
-          <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
-            {metrics.pendingFulfillmentCount}
-          </div>
-          <div className="mt-1 text-[11px] text-stone-500">
-            Committed SLA: {vendor.slaDays} business days
-          </div>
-        </div>
 
-        <div className="atelier-card rounded-3xl p-5">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
-            <span>In-Transit & Delivered</span>
-            <Truck className="h-4 w-4 text-[#0F5338]" />
-          </div>
-          <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
-            {metrics.shippedOrDeliveredCount}
-          </div>
-          <div className="mt-1 text-[11px] text-stone-500">
-            Gross GMV: {formatCurrency(metrics.grossSalesCents)}
+          <div className="atelier-card rounded-2xl p-5">
+            <div className="flex items-center justify-between text-xs font-semibold text-stone-500">
+              <span>In-Transit & Delivered</span>
+              <Truck className="h-4 w-4 text-[#0F5338]" />
+            </div>
+            <div className="font-display mt-2 text-2xl font-bold text-[#141210]">
+              {metrics.shippedOrDeliveredCount}
+            </div>
+            <div className="mt-1 text-[11px] text-stone-500">
+              Gross GMV: {formatCurrency(metrics.grossSalesCents)}
+            </div>
           </div>
         </div>
-      </div>
+      </Disclosure>
 
       {/* Segmented Workspace Tabs */}
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#141210]/10 pb-3">
-        {[
-          {
-            id: "catalog",
-            label: `Product & Gift Catalog Studio (${vendor.products.length})`,
-            icon: Package,
-          },
-          {
-            id: "orders",
-            label: `Carrier Logistics & Fulfillment Queue (${vendor.giftOrders.length})`,
-            icon: Truck,
-          },
-          {
-            id: "settings",
-            label: "Territory Coverage & SLA",
-            icon: Sliders,
-          },
-        ].map((t) => {
-          const Icon = t.icon;
-          const active = activeTab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setActiveTab(t.id as "catalog" | "orders" | "settings")}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition ${
-                active
-                  ? "bg-[#141210] text-white shadow-xs"
-                  : "bg-white text-stone-600 hover:bg-stone-100"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{t.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <WorkspaceTabs<typeof activeTab>
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        primary={[
+          { id: "orders", label: `Orders (${metrics.pendingFulfillmentCount} pending)`, icon: Truck },
+          { id: "catalog", label: `Products (${vendor.products.length})`, icon: Package },
+        ]}
+        secondary={[{ id: "settings", label: "Regions & dispatch SLA", icon: Sliders }]}
+      />
 
       {/* TAB 1: Product & Gift Catalog Studio */}
       {activeTab === "catalog" && (
-        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+        <div className="mt-4 space-y-4">
           {/* SKU merchandising */}
-          <div className="lg:col-span-5">
+          <Disclosure
+            title={editingProductId ? "Edit product" : "Add a product"}
+            open={productEditorOpen}
+            onOpenChange={setProductEditorOpen}
+          >
             <form
               onSubmit={handleSaveProduct}
-              className="atelier-card space-y-4 rounded-3xl p-6"
+              className="max-w-3xl space-y-3"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-bold text-[#141210]">
@@ -830,62 +813,61 @@ export default function VendorPortalPage() {
               </div>
 
               {/* Variants & Tags */}
-              <div className="rounded-2xl border border-[#141210]/10 bg-[#FAF8F5] p-3.5 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
-                  Recipient Choice Variants & Dietary/Feature Tags
+              <Disclosure title="Variants, tags & package details">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600">
+                        Option Group
+                      </label>
+                      <input
+                        type="text"
+                        value={skuVariantName}
+                        onChange={(e) => setSkuVariantName(e.target.value)}
+                        placeholder="Colorway / Size"
+                        className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-stone-600">
+                        Choices (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        value={skuVariantOptions}
+                        onChange={(e) => setSkuVariantOptions(e.target.value)}
+                        placeholder="Obsidian Matte, Brushed Brass, Warm Ivory"
+                        className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-stone-600">
+                        Merchandising Tags
+                      </label>
+                      <input
+                        type="text"
+                        value={skuTagsText}
+                        onChange={(e) => setSkuTagsText(e.target.value)}
+                        placeholder="Carbon Neutral, Artisan Made, Organic"
+                        className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600">
+                        Weight (grams)
+                      </label>
+                      <input
+                        type="number"
+                        value={skuWeightGrams}
+                        onChange={(e) => setSkuWeightGrams(Number(e.target.value))}
+                        className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 font-mono-code text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-stone-600">
-                      Option Group
-                    </label>
-                    <input
-                      type="text"
-                      value={skuVariantName}
-                      onChange={(e) => setSkuVariantName(e.target.value)}
-                      placeholder="Colorway / Size"
-                      className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-semibold text-stone-600">
-                      Choices (comma-separated)
-                    </label>
-                    <input
-                      type="text"
-                      value={skuVariantOptions}
-                      onChange={(e) => setSkuVariantOptions(e.target.value)}
-                      placeholder="Obsidian Matte, Brushed Brass, Warm Ivory"
-                      className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="block text-[11px] font-semibold text-stone-600">
-                      Merchandising Tags
-                    </label>
-                    <input
-                      type="text"
-                      value={skuTagsText}
-                      onChange={(e) => setSkuTagsText(e.target.value)}
-                      placeholder="Carbon Neutral, Artisan Made, Organic"
-                      className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-stone-600">
-                      Weight (grams)
-                    </label>
-                    <input
-                      type="number"
-                      value={skuWeightGrams}
-                      onChange={(e) => setSkuWeightGrams(Number(e.target.value))}
-                      className="mt-1 w-full rounded-lg border border-[#141210]/15 bg-white px-2.5 py-1.5 font-mono-code text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
+              </Disclosure>
 
               {/* Product photography */}
               <div className="rounded-2xl border border-[#D95D39]/25 bg-[#FAF8F5] p-3.5 space-y-2.5">
@@ -932,11 +914,10 @@ export default function VendorPortalPage() {
                               : [...prev, r.code]
                           )
                         }
-                        className={`rounded-xl border py-1.5 font-mono-code text-xs font-bold transition ${
-                          checked
-                            ? "border-[#0F5338] bg-[#0F5338] text-white"
-                            : "border-[#141210]/15 bg-[#FAF8F5] text-stone-600"
-                        }`}
+                        className={`rounded-xl border py-1.5 font-mono-code text-xs font-bold transition ${checked
+                          ? "border-[#0F5338] bg-[#0F5338] text-white"
+                          : "border-[#141210]/15 bg-[#FAF8F5] text-stone-600"
+                          }`}
                       >
                         {r.code}
                       </button>
@@ -971,10 +952,10 @@ export default function VendorPortalPage() {
                 </span>
               </button>
             </form>
-          </div>
+          </Disclosure>
 
           {/* Right Column: Filterable SKU Grid with Variants, Badges, Clone & Archive */}
-          <div className="lg:col-span-7 space-y-4">
+          <div className="space-y-3">
             {/* Filter Bar */}
             <div className="atelier-card flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3.5">
               <div className="flex flex-wrap gap-1.5">
@@ -982,11 +963,10 @@ export default function VendorPortalPage() {
                   <button
                     key={cat}
                     onClick={() => setCatalogCategoryFilter(cat)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                      catalogCategoryFilter === cat
-                        ? "bg-[#141210] text-white"
-                        : "bg-[#FAF8F5] text-stone-600 hover:bg-stone-200/70"
-                    }`}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${catalogCategoryFilter === cat
+                      ? "bg-[#141210] text-white"
+                      : "bg-[#FAF8F5] text-stone-600 hover:bg-stone-200/70"
+                      }`}
                   >
                     {cat === "ALL" ? "All Categories" : cat}
                   </button>
@@ -1001,7 +981,8 @@ export default function VendorPortalPage() {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredProducts.length === 0 && <p className="p-3 text-sm text-stone-500 sm:col-span-2">No matching products. Add a product or adjust your filters.</p>}
               {filteredProducts.map((product) => {
                 let parsedTags: string[] = [];
                 let parsedVariants: Array<{ name: string; options: string[] }> = [];
@@ -1019,7 +1000,7 @@ export default function VendorPortalPage() {
                 return (
                   <div
                     key={product.id}
-                    className="atelier-card flex flex-col justify-between overflow-hidden rounded-3xl"
+                    className="atelier-card flex flex-col justify-between overflow-hidden rounded-2xl"
                   >
                     <div>
                       <div className="relative h-48 overflow-hidden bg-[#F3EFE6]">
@@ -1128,11 +1109,10 @@ export default function VendorPortalPage() {
                               !product.active
                             )
                           }
-                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${
-                            product.active
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-stone-200 text-stone-600"
-                          }`}
+                          className={`rounded-lg px-2.5 py-1 text-[11px] font-bold ${product.active
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-stone-200 text-stone-600"
+                            }`}
                         >
                           {product.active ? "Active" : "Archived"}
                         </button>
@@ -1155,14 +1135,15 @@ export default function VendorPortalPage() {
 
       {/* TAB 2: Multi-Checkpoint Carrier Logistics & Fulfillment Queue */}
       {activeTab === "orders" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-4 space-y-5">
           {vendor.giftOrders.length === 0 ? (
-            <div className="atelier-card rounded-3xl p-8 text-center text-xs text-stone-500">
-              No orders yet. Orders appear here when recipients select your products.
+            <div className="atelier-card rounded-2xl p-5 text-center text-xs text-stone-500">
+              <p>No orders yet. Orders appear here when recipients select your products.</p>
+              <button type="button" onClick={() => { setActiveTab("catalog"); setProductEditorOpen(true); }} className="mt-3 min-h-10 rounded-lg bg-[#141210] px-4 py-2 font-semibold text-white">Add a product</button>
             </div>
           ) : (
             vendor.giftOrders.map((order) => (
-              <div key={order.id} className="atelier-card rounded-3xl p-6 space-y-5">
+              <div key={order.id} className="atelier-card rounded-2xl p-4 space-y-5">
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                   <div className="flex items-start gap-4">
                     {order.product?.imageUrl && (
@@ -1269,138 +1250,139 @@ export default function VendorPortalPage() {
 
                       {(order.fulfillmentStatus === "PENDING_VENDOR" ||
                         order.fulfillmentStatus === "PROCESSING") && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <input
-                            type="text"
-                            placeholder="Carrier (DHL / FedEx / Yamato)"
-                            value={carrierInputs[order.id] ?? ""}
-                            onChange={(e) =>
-                              setCarrierInputs((prev) => ({
-                                ...prev,
-                                [order.id]: e.target.value,
-                              }))
-                            }
-                            className="w-36 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Waybill / Tracking #"
-                            value={
-                              trackingInputs[order.id] ??
-                              ""
-                            }
-                            onChange={(e) =>
-                              setTrackingInputs((prev) => ({
-                                ...prev,
-                                [order.id]: e.target.value,
-                              }))
-                            }
-                            className="w-40 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 font-mono-code text-xs"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Service Level"
-                            value={
-                              serviceInputs[order.id] ??
-                              order.serviceLevel ??
-                              ""
-                            }
-                            onChange={(e) =>
-                              setServiceInputs((prev) => ({
-                                ...prev,
-                                [order.id]: e.target.value,
-                              }))
-                            }
-                            className="w-44 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
-                          />
-                          <button
-                            onClick={() =>
-                              handleOrderFulfill(order.id, "SHIPPED", order.recipientRegion)
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#141210] px-4 py-2 text-xs font-bold text-white hover:bg-[#D95D39]"
-                          >
-                            <Truck className="h-3.5 w-3.5" />
-                            Dispatch & Lock Address
-                          </button>
-                        </div>
-                      )}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Carrier (DHL / FedEx / Yamato)"
+                              value={carrierInputs[order.id] ?? ""}
+                              onChange={(e) =>
+                                setCarrierInputs((prev) => ({
+                                  ...prev,
+                                  [order.id]: e.target.value,
+                                }))
+                              }
+                              className="w-36 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Waybill / Tracking #"
+                              value={
+                                trackingInputs[order.id] ??
+                                ""
+                              }
+                              onChange={(e) =>
+                                setTrackingInputs((prev) => ({
+                                  ...prev,
+                                  [order.id]: e.target.value,
+                                }))
+                              }
+                              className="w-40 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 font-mono-code text-xs"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Service Level"
+                              value={
+                                serviceInputs[order.id] ??
+                                order.serviceLevel ??
+                                ""
+                              }
+                              onChange={(e) =>
+                                setServiceInputs((prev) => ({
+                                  ...prev,
+                                  [order.id]: e.target.value,
+                                }))
+                              }
+                              className="w-44 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
+                            />
+                            <button
+                              onClick={() =>
+                                handleOrderFulfill(order.id, "SHIPPED", order.recipientRegion)
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-[#141210] px-4 py-2 text-xs font-bold text-white hover:bg-[#D95D39]"
+                            >
+                              <Truck className="h-3.5 w-3.5" />
+                              Dispatch & Lock Address
+                            </button>
+                          </div>
+                        )}
 
                       {(order.fulfillmentStatus === "SHIPPED" ||
                         order.fulfillmentStatus === "EXCEPTION") && (
-                        <button
-                          onClick={() =>
-                            handleOrderFulfill(
-                              order.id,
-                              "OUT_FOR_DELIVERY",
-                              order.recipientRegion
-                            )
-                          }
-                          className="rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-amber-700"
-                        >
-                          Mark Out for Delivery
-                        </button>
-                      )}
+                          <button
+                            onClick={() =>
+                              handleOrderFulfill(
+                                order.id,
+                                "OUT_FOR_DELIVERY",
+                                order.recipientRegion
+                              )
+                            }
+                            className="rounded-xl bg-amber-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-amber-700"
+                          >
+                            Mark Out for Delivery
+                          </button>
+                        )}
 
                       {(order.fulfillmentStatus === "SHIPPED" ||
                         order.fulfillmentStatus === "OUT_FOR_DELIVERY" ||
                         order.fulfillmentStatus === "EXCEPTION") && (
-                        <>
-                          <button
-                            onClick={() =>
-                              handleOrderFulfill(order.id, "DELIVERED", order.recipientRegion)
-                            }
-                            className="inline-flex items-center gap-1 rounded-xl bg-[#0F5338] px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Confirm Delivered
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleOrderFulfill(order.id, "EXCEPTION", order.recipientRegion)
-                            }
-                            className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-100"
-                          >
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            Flag Exception
-                          </button>
-                        </>
-                      )}
+                          <>
+                            <button
+                              onClick={() =>
+                                handleOrderFulfill(order.id, "DELIVERED", order.recipientRegion)
+                              }
+                              className="inline-flex items-center gap-1 rounded-xl bg-[#0F5338] px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Confirm Delivered
+                            </button>
+                          </>
+                        )}
                     </div>
 
                     {/* Append Custom Transit Scan */}
-                    <div className="flex flex-wrap items-center gap-2 border-t border-[#141210]/8 pt-3">
-                      <input
-                        type="text"
-                        placeholder="Add custom carrier scan (e.g. Cleared Customs / Arrived at Local Hub)"
-                        value={checkpointTitleInputs[order.id] ?? ""}
-                        onChange={(e) =>
-                          setCheckpointTitleInputs((prev) => ({
-                            ...prev,
-                            [order.id]: e.target.value,
-                          }))
-                        }
-                        className="flex-1 min-w-[220px] rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
-                      />
-                      <input
-                        type="text"
-                        placeholder="City / Hub Location"
-                        value={checkpointLocationInputs[order.id] ?? ""}
-                        onChange={(e) =>
-                          setCheckpointLocationInputs((prev) => ({
-                            ...prev,
-                            [order.id]: e.target.value,
-                          }))
-                        }
-                        className="w-40 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAppendCheckpoint(order.id)}
-                        className="rounded-xl border border-[#141210]/15 bg-white px-3 py-1.5 text-xs font-bold text-[#141210] hover:bg-stone-100"
-                      >
-                        + Log Scan Checkpoint
-                      </button>
-                    </div>
+                    <Disclosure title="Add checkpoint or report an exception">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          placeholder="Add custom carrier scan (e.g. Cleared Customs / Arrived at Local Hub)"
+                          value={checkpointTitleInputs[order.id] ?? ""}
+                          onChange={(e) =>
+                            setCheckpointTitleInputs((prev) => ({
+                              ...prev,
+                              [order.id]: e.target.value,
+                            }))
+                          }
+                          className="flex-1 min-w-[220px] rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
+                        />
+                        <input
+                          type="text"
+                          placeholder="City / Hub Location"
+                          value={checkpointLocationInputs[order.id] ?? ""}
+                          onChange={(e) =>
+                            setCheckpointLocationInputs((prev) => ({
+                              ...prev,
+                              [order.id]: e.target.value,
+                            }))
+                          }
+                          className="w-40 rounded-xl border border-[#141210]/15 bg-[#FAF8F5] px-3 py-1.5 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAppendCheckpoint(order.id)}
+                          className="rounded-xl border border-[#141210]/15 bg-white px-3 py-1.5 text-xs font-bold text-[#141210] hover:bg-stone-100"
+                        >
+                          + Log Scan Checkpoint
+                        </button>
+                        {["SHIPPED", "OUT_FOR_DELIVERY", "EXCEPTION"].includes(order.fulfillmentStatus) && (
+                          <button
+                            onClick={() => handleOrderFulfill(order.id, "EXCEPTION", order.recipientRegion)}
+                            className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800"
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" /> Flag exception
+                          </button>
+                        )}
+                      </div>
+                    </Disclosure>
                   </div>
                 )}
               </div>
@@ -1411,7 +1393,7 @@ export default function VendorPortalPage() {
 
       {/* TAB 3: Regional Settings */}
       {activeTab === "settings" && (
-        <div className="atelier-card mt-6 max-w-2xl rounded-3xl p-6">
+        <div className="atelier-card mt-4 max-w-2xl rounded-2xl p-4">
           <h3 className="font-display text-xl font-semibold text-[#141210]">
             Regional Warehouse & Territory Configuration
           </h3>
@@ -1466,11 +1448,10 @@ export default function VendorPortalPage() {
                             : [...prev, r.code]
                         )
                       }
-                      className={`flex items-center justify-between rounded-2xl border p-3.5 text-left text-xs transition ${
-                        checked
-                          ? "border-[#0F5338] bg-[#0F5338]/10 text-[#141210]"
-                          : "border-[#141210]/12 bg-white text-stone-600"
-                      }`}
+                      className={`flex items-center justify-between rounded-2xl border p-3.5 text-left text-xs transition ${checked
+                        ? "border-[#0F5338] bg-[#0F5338]/10 text-[#141210]"
+                        : "border-[#141210]/12 bg-white text-stone-600"
+                        }`}
                     >
                       <div>
                         <div className="font-bold">{r.label}</div>

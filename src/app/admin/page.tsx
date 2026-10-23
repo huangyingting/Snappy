@@ -1,5 +1,8 @@
 "use client";
 
+import { Disclosure } from "@/components/Disclosure";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
+
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
@@ -326,7 +329,7 @@ export default function AdminPortalPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-[#6E665E]">
+      <div className="mx-auto max-w-7xl px-4 py-8 text-center text-sm text-[#6E665E]">
         Loading Platform Governance Console...
       </div>
     );
@@ -335,11 +338,11 @@ export default function AdminPortalPage() {
   if (unauthorized || !data) {
     return (
       <div className="mx-auto max-w-xl px-4 py-14">
-        <div className="rounded-3xl border border-[#E6E0D6] bg-white p-8 text-center shadow-xs">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 text-center shadow-xs">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#141210] text-[#FAF8F5]">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <h1 className="font-serif text-3xl font-semibold text-[#141210]">
+          <h1 className="font-serif text-2xl font-semibold text-[#141210]">
             Snappy Platform Control Tower
           </h1>
           <p className="mt-2 text-xs text-[#6E665E]">
@@ -347,7 +350,7 @@ export default function AdminPortalPage() {
           </p>
           <Link
             href="/auth/admin"
-            className="mt-6 rounded-full bg-[#141210] px-6 py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
+            className="mt-4 rounded-full bg-[#141210] px-6 py-3 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
           >
             Sign in as an administrator →
           </Link>
@@ -369,30 +372,30 @@ export default function AdminPortalPage() {
   } = data;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-[#141210] p-6 text-[#FAF8F5] shadow-md sm:flex-row sm:items-center">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#E6E0D6] bg-[#141210] p-4 text-[#FAF8F5] shadow-md sm:flex-row sm:items-center">
         <div>
           <span className="rounded-full bg-[#C85A32] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
-            Platform Governance & FinOps
+            Administration
           </span>
-          <h1 className="mt-2 font-serif text-3xl font-semibold">
-            Snappy Atelier Global Control Tower
+          <h1 className="mt-2 font-serif text-2xl font-semibold">
+            Platform operations
           </h1>
           <p className="text-xs text-[#E8DFD1]/80">
-            Oversee regional suppliers, gift category taxonomy, carrier logistics across NA/EMEA/APAC/LATAM, and automated escrow reclaim sweeps.
+            {metrics.pendingVendorsCount} vendors awaiting review
           </p>
         </div>
 
-        <button
+        {metrics.expiredUnclaimedCount > 0 && <button
           onClick={handleReclaimExpired}
           className="inline-flex items-center gap-2 rounded-full bg-[#C85A32] px-5 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#b24d28]"
         >
           <RotateCcw className="h-4 w-4" />
           <span>
-            Sweep Expired Escrow ({metrics.expiredUnclaimedCount} •{" "}
+            Reclaim expired gifts ({metrics.expiredUnclaimedCount} ·{" "}
             {formatCurrency(metrics.reclaimableEscrowCents)})
           </span>
-        </button>
+        </button>}
       </div>
 
       {banner && (
@@ -402,132 +405,111 @@ export default function AdminPortalPage() {
       )}
       {errorMsg && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{errorMsg}</p>}
 
-      <form onSubmit={recordPayment} className="mt-6 flex flex-wrap items-end gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6">
-        <div className="w-full">
-          <h2 className="font-serif text-xl font-semibold">Reconcile a settled payment</h2>
-          <p className="mt-1 text-xs text-stone-600">Record funds already received through your banking or payment system. A unique settlement reference prevents duplicate credit.</p>
-        </div>
-        <label className="text-xs">Company<select name="companyId" required className="mt-2 block rounded-xl border p-3">{data.companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
-        <label className="text-xs">Amount (USD)<input name="amount" type="number" min="10" max="1000000" step="0.01" required className="mt-2 block rounded-xl border p-3" /></label>
-        <label className="text-xs">Settlement reference<input name="settlementReference" required maxLength={150} className="mt-2 block rounded-xl border p-3" /></label>
-        <button disabled={!data.companies.length} className="rounded-full bg-[#141210] px-5 py-3 text-xs font-bold text-white disabled:opacity-50">Record payment</button>
-      </form>
+      <Disclosure title="Reconcile a settled payment" className="mt-3">
+        <form onSubmit={recordPayment} className="flex flex-wrap items-end gap-3">
+          <div className="w-full">
+            <p className="text-xs text-stone-600">Record funds already received. A unique settlement reference prevents duplicate credit.</p>
+          </div>
+          <label className="min-w-0 text-xs">Company<select name="companyId" required className="mt-1 block w-full rounded-lg border p-2">{data.companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
+          <label className="min-w-0 text-xs">Amount (USD)<input name="amount" type="number" min="10" max="1000000" step="0.01" required className="mt-1 block w-full rounded-lg border p-2" /></label>
+          <label className="min-w-0 text-xs">Settlement reference<input name="settlementReference" required maxLength={150} className="mt-1 block w-full rounded-lg border p-2" /></label>
+          <button disabled={!data.companies.length} className="rounded-full bg-[#141210] px-5 py-3 text-xs font-bold text-white disabled:opacity-50">Record payment</button>
+        </form>
+      </Disclosure>
 
       {/* KPIs */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Platform Commission Revenue</span>
-            <DollarSign className="h-4 w-4 text-[#1F4D3A]" />
+      <Disclosure title="Platform balances & performance" className="mt-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Platform Commission Revenue</span>
+              <DollarSign className="h-4 w-4 text-[#1F4D3A]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {formatCurrency(metrics.platformRevenueCents)}
+            </div>
+            <div className="mt-1 text-[11px] text-[#6E665E]">
+              Total GMV: {formatCurrency(metrics.totalGmvCents)}
+            </div>
           </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {formatCurrency(metrics.platformRevenueCents)}
-          </div>
-          <div className="mt-1 text-[11px] text-[#6E665E]">
-            Total GMV: {formatCurrency(metrics.totalGmvCents)}
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Corporate Wallet + Escrow Pool</span>
-            <ShieldCheck className="h-4 w-4 text-[#C85A32]" />
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Corporate Wallet + Escrow Pool</span>
+              <ShieldCheck className="h-4 w-4 text-[#C85A32]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {formatCurrency(
+                metrics.totalCorporateWalletCents + metrics.totalCorporateEscrowCents
+              )}
+            </div>
+            <div className="mt-1 text-[11px] text-[#6E665E]">
+              Escrow Held: {formatCurrency(metrics.totalCorporateEscrowCents)}
+            </div>
           </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {formatCurrency(
-              metrics.totalCorporateWalletCents + metrics.totalCorporateEscrowCents
-            )}
-          </div>
-          <div className="mt-1 text-[11px] text-[#6E665E]">
-            Escrow Held: {formatCurrency(metrics.totalCorporateEscrowCents)}
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Regional Suppliers & Categories</span>
-            <Package className="h-4 w-4 text-[#141210]" />
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Regional Suppliers & Categories</span>
+              <Package className="h-4 w-4 text-[#141210]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {vendors.length} Partners • {giftCategories?.length || 0} Cats
+            </div>
+            <div className="mt-1 text-[11px] font-semibold text-[#C85A32]">
+              {metrics.pendingVendorsCount} pending approval review
+            </div>
           </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {vendors.length} Partners • {giftCategories?.length || 0} Cats
-          </div>
-          <div className="mt-1 text-[11px] font-semibold text-[#C85A32]">
-            {metrics.pendingVendorsCount} pending approval review
-          </div>
-        </div>
 
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Total Charitable Impact</span>
-            <HeartHandshake className="h-4 w-4 text-[#1F4D3A]" />
-          </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {formatCurrency(metrics.totalCharityDonationsCents)}
-          </div>
-          <div className="mt-1 text-[11px] text-[#6E665E]">
-            Across {charities.length} verified charities
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Total Charitable Impact</span>
+              <HeartHandshake className="h-4 w-4 text-[#1F4D3A]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {formatCurrency(metrics.totalCharityDonationsCents)}
+            </div>
+            <div className="mt-1 text-[11px] text-[#6E665E]">
+              Across {charities.length} verified charities
+            </div>
           </div>
         </div>
-      </div>
+      </Disclosure>
 
       {/* Tabs */}
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#E6E0D6] pb-3">
-        {[
-          { id: "vendors", label: `Vendor Governance (${vendors.length})` },
-          {
-            id: "categories",
-            label: `Gift Category Taxonomy (${giftCategories?.length || 0})`,
-          },
-          {
-            id: "logistics",
-            label: `Global Carrier Logistics (${giftOrders?.length || 0})`,
-          },
-          { id: "collections", label: `Global Collections (${collections.length})` },
-          { id: "charities", label: `Charity Partners (${charities.length})` },
-          { id: "audit", label: `System Audit Trail (${auditLogs.length})` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() =>
-              setActiveTab(
-                t.id as
-                  | "vendors"
-                  | "categories"
-                  | "logistics"
-                  | "collections"
-                  | "charities"
-                  | "audit"
-              )
-            }
-            className={`rounded-full px-4 py-2 text-xs font-bold transition ${
-              activeTab === t.id
-                ? "bg-[#141210] text-[#FAF8F5]"
-                : "bg-white text-[#575049] hover:bg-[#EFECE6]"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <WorkspaceTabs<typeof activeTab>
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        primary={[
+          { id: "vendors", label: `Vendors (${vendors.length})` },
+          { id: "logistics", label: `Orders & donations (${giftOrders?.length || 0})` },
+        ]}
+        secondary={[
+          { id: "categories", label: `Categories (${giftCategories?.length || 0})` },
+          { id: "collections", label: `Collections (${collections.length})` },
+          { id: "charities", label: `Charities (${charities.length})` },
+          { id: "audit", label: `Audit log (${auditLogs.length})` },
+        ]}
+      />
 
       {/* TAB 1: Vendors */}
       {activeTab === "vendors" && (
-        <div className="mt-6 space-y-3">
+        <div className="mt-4 space-y-3">
+          {vendors.length === 0 && <p className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-500">New vendor registrations will appear here for review.</p>}
           {vendors.map((v) => (
             <div
               key={v.id}
-              className="flex flex-col justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-5 shadow-xs sm:flex-row sm:items-center"
+              className="flex flex-col justify-between gap-4 rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs sm:flex-row sm:items-center"
             >
               <div>
                 <div className="flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      v.status === "APPROVED"
-                        ? "bg-[#1F4D3A]/15 text-[#1F4D3A]"
-                        : v.status === "PENDING"
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${v.status === "APPROVED"
+                      ? "bg-[#1F4D3A]/15 text-[#1F4D3A]"
+                      : v.status === "PENDING"
                         ? "bg-[#C85A32]/15 text-[#C85A32]"
                         : "bg-rose-100 text-rose-800"
-                    }`}
+                      }`}
                   >
                     {v.status}
                   </span>
@@ -572,7 +554,7 @@ export default function AdminPortalPage() {
           ))}
 
           {expiredUnclaimedGifts.length > 0 && (
-            <div className="mt-6 rounded-3xl border border-[#C85A32]/30 bg-[#C85A32]/10 p-5">
+            <div className="mt-4 rounded-2xl border border-[#C85A32]/30 bg-[#C85A32]/10 p-5">
               <h4 className="text-sm font-bold text-[#141210]">
                 Expired Unclaimed Gifts Eligible for Escrow Reclaim ({expiredUnclaimedGifts.length})
               </h4>
@@ -591,11 +573,11 @@ export default function AdminPortalPage() {
 
       {/* TAB 2: Gift Category Taxonomy */}
       {activeTab === "categories" && (
-        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+        <div className="mt-4 grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <form
               onSubmit={handleUpsertCategory}
-              className="space-y-3.5 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              className="space-y-3.5 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
             >
               <div className="flex items-center gap-2 font-serif text-lg font-semibold text-[#141210]">
                 <Tag className="h-4 w-4 text-[#C85A32]" />
@@ -653,7 +635,7 @@ export default function AdminPortalPage() {
             {giftCategories?.map((cat) => (
               <div
                 key={cat.id}
-                className="rounded-3xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
+                className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
               >
                 <div className="flex items-center justify-between">
                   <span
@@ -678,11 +660,11 @@ export default function AdminPortalPage() {
 
       {/* TAB 3: Global Carrier Logistics Monitor */}
       {activeTab === "logistics" && (
-        <div className="mt-6 space-y-5">
+        <div className="mt-4 space-y-5">
           {giftOrders?.map((ord) => (
             <div
               key={ord.id}
-              className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              className="rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-3">
@@ -754,11 +736,11 @@ export default function AdminPortalPage() {
 
       {/* TAB 4: Global Collections */}
       {activeTab === "collections" && (
-        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+        <div className="mt-4 grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <form
               onSubmit={handleCreateGlobalCollection}
-              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              className="space-y-4 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
             >
               <div className="flex items-center gap-2 font-serif text-lg font-semibold text-[#141210]">
                 <Plus className="h-4 w-4 text-[#C85A32]" />
@@ -827,7 +809,7 @@ export default function AdminPortalPage() {
             {collections.map((c) => (
               <div
                 key={c.id}
-                className="rounded-3xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
+                className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
               >
                 <div className="flex justify-between text-xs font-bold text-[#C85A32]">
                   <span>{c.occasion}</span>
@@ -847,11 +829,11 @@ export default function AdminPortalPage() {
 
       {/* TAB 5: Charities */}
       {activeTab === "charities" && (
-        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+        <div className="mt-4 grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <form
               onSubmit={handleCreateCharity}
-              className="space-y-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              className="space-y-4 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
             >
               <h3 className="font-serif text-lg font-semibold text-[#141210]">
                 Onboard Verified Charity Partner
@@ -892,7 +874,7 @@ export default function AdminPortalPage() {
             {charities.map((ch) => (
               <div
                 key={ch.id}
-                className="rounded-3xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
+                className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs"
               >
                 <div className="flex justify-between text-xs font-bold text-[#1F4D3A]">
                   <span>{ch.category}</span>
@@ -910,7 +892,7 @@ export default function AdminPortalPage() {
 
       {/* TAB 6: Audit Log */}
       {activeTab === "audit" && (
-        <div className="mt-6 space-y-2">
+        <div className="mt-4 space-y-2">
           {auditLogs.map((log) => (
             <div
               key={log.id}

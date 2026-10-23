@@ -1,5 +1,8 @@
 "use client";
 
+import { Disclosure } from "@/components/Disclosure";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
+
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -216,7 +219,7 @@ export default function RecipientPortalPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 text-center text-sm text-[#6E665E]">
+      <div className="mx-auto max-w-6xl px-4 py-8 text-center text-sm text-[#6E665E]">
         Loading Snappy Atelier Recipient Gift & Delivery Suite...
       </div>
     );
@@ -225,18 +228,18 @@ export default function RecipientPortalPage() {
   if (unauthorized || !data) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-14">
-        <div className="rounded-3xl border border-[#E6E0D6] bg-white p-8 text-center shadow-xs">
+        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 text-center shadow-xs">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#C85A32]/15 text-[#C85A32]">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="font-serif text-3xl font-semibold text-[#141210]">
-            Recipient Gift & Delivery Hub
+          <h1 className="font-serif text-2xl font-semibold text-[#141210]">
+            Recipient workspace
           </h1>
           <p className="mt-2 text-xs text-[#6E665E]">
             Sign in to view your gifts and saved delivery details, or open an invitation with its code and recipient email.
           </p>
 
-          <Link href="/auth/recipient" className="mt-6 inline-block rounded-full bg-[#C85A32] px-6 py-3 text-sm font-semibold text-white">Sign in or redeem an invitation</Link>
+          <Link href="/auth/recipient" className="mt-4 inline-block rounded-full bg-[#C85A32] px-6 py-3 text-sm font-semibold text-white">Sign in or redeem an invitation</Link>
           {lookupError && (
             <p className="mt-2 text-xs font-semibold text-rose-600">{lookupError}</p>
           )}
@@ -249,38 +252,40 @@ export default function RecipientPortalPage() {
   const { user, savedAddresses, gifts, metrics } = data;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       {/* Header Banner */}
-      <div className="flex flex-col justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs lg:flex-row lg:items-center">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs lg:flex-row lg:items-center">
         <div>
           <span className="rounded-full bg-[#C85A32]/15 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-[#C85A32]">
-            Recipient Gift & Delivery Hub
+            Recipient workspace
           </span>
-          <h1 className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            Welcome back, {user.name}
+          <h1 className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+            Your gifts
           </h1>
           <p className="mt-1 text-xs text-[#6E665E]">
-            Default Territory: <strong>{user.preferredRegion}</strong> • Saved City:{" "}
-            {user.defaultCity || "Not set"}, {user.defaultCountry} •{" "}
-            {savedAddresses?.length || 0} saved delivery destinations
+            {user.name} · {metrics.actionRequired} ready to choose · {metrics.inTransit} in transit
           </p>
         </div>
 
-        <form onSubmit={handleClaimLookup} className="flex items-center gap-2">
-          <input
-            type="text"
-            value={claimCode}
-            onChange={(e) => setClaimCode(e.target.value)}
-            placeholder="Redeem another code (SNPY-...)"
-            className="rounded-full border border-[#E6E0D6] bg-[#FAF8F5] px-4 py-2 font-mono text-xs uppercase"
-          />
-          <button
-            type="submit"
-            className="rounded-full bg-[#141210] px-5 py-2 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
-          >
-            Unwrap Code
-          </button>
-        </form>
+        <Disclosure title="Redeem another invitation" defaultOpen={gifts.length === 0} className="w-full lg:w-80">
+          <form onSubmit={handleClaimLookup} className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              required
+              aria-label="Invitation code"
+              value={claimCode}
+              onChange={(e) => setClaimCode(e.target.value)}
+              placeholder="Redeem another code (SNPY-...)"
+              className="min-w-0 flex-1 rounded-lg border border-[#E6E0D6] bg-[#FAF8F5] px-3 py-2 font-mono text-xs uppercase"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-[#141210] px-5 py-2 text-xs font-bold text-[#FAF8F5] hover:bg-[#C85A32]"
+            >
+              Unwrap Code
+            </button>
+          </form>
+        </Disclosure>
       </div>
 
       {banner && (
@@ -291,71 +296,56 @@ export default function RecipientPortalPage() {
       {lookupError && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{lookupError}</p>}
 
       {/* KPIs */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Ready to Unwrap & Claim</span>
-            <Gift className="h-4 w-4 text-[#C85A32]" />
+      <Disclosure title="Gift activity overview" className="mt-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Ready to Unwrap & Claim</span>
+              <Gift className="h-4 w-4 text-[#C85A32]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {metrics.actionRequired}
+            </div>
           </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {metrics.actionRequired}
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>In Carrier Fulfillment</span>
+              <Truck className="h-4 w-4 text-[#141210]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {metrics.inTransit}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
+              <span>Delivered / Donated</span>
+              <CheckCircle2 className="h-4 w-4 text-[#1F4D3A]" />
+            </div>
+            <div className="mt-2 font-serif text-2xl font-semibold text-[#141210]">
+              {metrics.completed}
+            </div>
           </div>
         </div>
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>In Carrier Fulfillment</span>
-            <Truck className="h-4 w-4 text-[#141210]" />
-          </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {metrics.inTransit}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-[#E6E0D6] bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#6E665E]">
-            <span>Delivered / Donated</span>
-            <CheckCircle2 className="h-4 w-4 text-[#1F4D3A]" />
-          </div>
-          <div className="mt-2 font-serif text-3xl font-semibold text-[#141210]">
-            {metrics.completed}
-          </div>
-        </div>
-      </div>
+      </Disclosure>
 
       {/* Sub-navigation Tabs */}
-      <div className="mt-6 flex flex-wrap gap-2 border-b border-[#E6E0D6] pb-3">
-        <button
-          onClick={() => setActiveTab("gifts")}
-          className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition ${
-            activeTab === "gifts"
-              ? "bg-[#141210] text-[#FAF8F5]"
-              : "bg-white text-[#575049] hover:bg-[#EFECE6]"
-          }`}
-        >
-          <Truck className="h-3.5 w-3.5" />
-          <span>My Gifts & Live Carrier Tracking ({gifts.length})</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("addresses")}
-          className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold transition ${
-            activeTab === "addresses"
-              ? "bg-[#141210] text-[#FAF8F5]"
-              : "bg-white text-[#575049] hover:bg-[#EFECE6]"
-          }`}
-        >
-          <BookOpen className="h-3.5 w-3.5" />
-          <span>Saved Delivery Address Book ({savedAddresses?.length || 0})</span>
-        </button>
-      </div>
+      <WorkspaceTabs<typeof activeTab>
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        primary={[{ id: "gifts", label: `My gifts (${gifts.length})`, icon: Gift }]}
+        secondary={[{ id: "addresses", label: `Addresses (${savedAddresses?.length || 0})`, icon: BookOpen }]}
+      />
 
       {/* TAB 1: GIFTS & CARRIER LOGISTICS */}
       {activeTab === "gifts" && (
-        <div className="mt-6 space-y-6">
+        <div className="mt-4 space-y-4">
+          {gifts.length === 0 && <p className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-500">No gifts yet. Redeem an invitation above using the code sent to your email.</p>}
           {gifts.map((g) => {
             const isUnclaimed = ["SENT", "OPENED"].includes(g.status);
             return (
               <div
                 key={g.id}
-                className="rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+                className="rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
               >
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                   <div className="flex items-start gap-4">
@@ -372,63 +362,50 @@ export default function RecipientPortalPage() {
                           {g.company.name} • {g.campaign.occasion}
                         </span>
                         <span
-                          className={`rounded-full px-3 py-0.5 text-xs font-bold ${
-                            isUnclaimed
-                              ? "bg-[#C85A32]/15 text-[#C85A32]"
-                              : "bg-[#1F4D3A]/15 text-[#1F4D3A]"
-                          }`}
+                          className={`rounded-full px-3 py-0.5 text-xs font-bold ${isUnclaimed
+                            ? "bg-[#C85A32]/15 text-[#C85A32]"
+                            : "bg-[#1F4D3A]/15 text-[#1F4D3A]"
+                            }`}
                         >
                           {g.status}
                         </span>
-                        <span className="font-mono text-xs text-[#6E665E]">
-                          Code: {g.claimCode}
-                        </span>
                       </div>
 
-                      <p className="mt-2 font-serif text-base italic text-[#141210]">
-                        &ldquo;{g.personalMessage}&rdquo;
-                      </p>
-
                       {g.giftOrder && (
-                        <p className="mt-1.5 text-xs text-[#6E665E]">
-                          Selected:{" "}
-                          <strong className="text-[#141210]">
-                            {g.giftOrder.product?.title ||
-                              (g.giftOrder.charity
-                                ? `Donated to ${g.giftOrder.charity.name}`
-                                : "Gift")}
-                          </strong>
-                          {g.giftOrder.selectedVariant && (
-                            <span> • {g.giftOrder.selectedVariant}</span>
-                          )}
-                          {g.giftOrder.shippingCity && (
-                            <span>
-                              {" "}
-                              • Destination: {g.giftOrder.shippingAddressLine1},{" "}
-                              {g.giftOrder.shippingCity}, {g.giftOrder.shippingCountry}
-                            </span>
-                          )}
-                        </p>
+                        <h2 className="mt-2 font-serif text-lg font-semibold text-[#141210]">
+                          {g.giftOrder.product?.title || (g.giftOrder.charity ? `Donation to ${g.giftOrder.charity.name}` : "Your gift")}
+                        </h2>
                       )}
+                      <Disclosure title="Gift message & delivery details" className="mt-2">
+                        <p className="break-all font-mono text-xs text-stone-500">Code: {g.claimCode}</p>
+                        <p className="mt-2 font-serif text-sm italic text-[#141210]">&ldquo;{g.personalMessage}&rdquo;</p>
+                        {g.giftOrder && (
+                          <p className="mt-2 text-xs text-[#6E665E]">
+                            {g.giftOrder.selectedVariant}
+                            {g.giftOrder.shippingCity && (
+                              <span> · {g.giftOrder.shippingAddressLine1}, {g.giftOrder.shippingCity}, {g.giftOrder.shippingCountry}</span>
+                            )}
+                          </p>
+                        )}
+                      </Disclosure>
                     </div>
                   </div>
 
                   <div>
                     <Link
                       href={`/claim/${g.claimToken}`}
-                      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold transition ${
-                        isUnclaimed
-                          ? "bg-[#C85A32] text-white hover:bg-[#b24d28]"
-                          : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#141210] hover:border-[#141210]"
-                      }`}
+                      className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold transition ${isUnclaimed
+                        ? "bg-[#C85A32] text-white hover:bg-[#b24d28]"
+                        : "border border-[#E6E0D6] bg-[#FAF8F5] text-[#141210] hover:border-[#141210]"
+                        }`}
                     >
                       <Sparkles className="h-4 w-4" />
                       <span>
                         {isUnclaimed
                           ? "Unwrap & Choose Gift"
                           : g.giftOrder?.addressLocked
-                          ? "View Live Tracking & Gratitude"
-                          : "Edit Delivery / Swap Gift / Track"}
+                            ? "View Live Tracking & Gratitude"
+                            : "Edit Delivery / Swap Gift / Track"}
                       </span>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </Link>
@@ -463,11 +440,11 @@ export default function RecipientPortalPage() {
 
       {/* TAB 2: SAVED DELIVERY ADDRESS BOOK */}
       {activeTab === "addresses" && (
-        <div className="mt-6 grid gap-8 lg:grid-cols-12">
+        <div className="mt-4 grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-5">
             <form
               onSubmit={handleSaveAddress}
-              className="space-y-3.5 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+              className="space-y-3.5 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
             >
               <div className="flex items-center gap-2 font-serif text-xl font-semibold text-[#141210]">
                 <Plus className="h-5 w-5 text-[#C85A32]" />
@@ -596,7 +573,7 @@ export default function RecipientPortalPage() {
             {savedAddresses?.map((addr) => (
               <div
                 key={addr.id}
-                className="flex items-start justify-between gap-4 rounded-3xl border border-[#E6E0D6] bg-white p-6 shadow-xs"
+                className="flex items-start justify-between gap-4 rounded-2xl border border-[#E6E0D6] bg-white p-4 shadow-xs"
               >
                 <div>
                   <div className="flex items-center gap-2">

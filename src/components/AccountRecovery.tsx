@@ -29,12 +29,12 @@ export function AccountRecovery({ purpose, token }: { purpose: "verify" | "reset
     }
   }
   return (
-    <div className="mx-auto my-16 max-w-md rounded-3xl border border-stone-200 bg-white p-8">
-      <h1 className="font-display text-3xl">{purpose === "verify" ? "Verify your email" : "Reset your password"}</h1>
+    <div className="mx-auto my-16 max-w-md rounded-2xl border border-stone-200 bg-white p-5">
+      <h1 className="font-display text-2xl">{purpose === "verify" ? "Verify your email" : "Reset your password"}</h1>
       {error && <p role="alert" className="mt-4 text-sm text-rose-700">{error}</p>}
       {message && <p role="status" className="mt-4 text-sm text-emerald-800">{message}</p>}
-      {redirectTo ? <Link href={redirectTo} className="mt-6 inline-block font-semibold">Continue to sign in →</Link> : (
-        <form onSubmit={submit} className="mt-6 space-y-4">
+      {redirectTo ? <Link href={redirectTo} className="mt-4 inline-block font-semibold">Continue to sign in →</Link> : (
+        <form onSubmit={submit} className="mt-4 space-y-4">
           {!token && <label className="block text-sm">Email<input name="email" type="email" required className="mt-2 w-full rounded-xl border p-3" /></label>}
           {token && purpose === "reset" && <label className="block text-sm">New password<input name="password" type="password" required minLength={12} maxLength={128} autoComplete="new-password" className="mt-2 w-full rounded-xl border p-3" /></label>}
           <button disabled={loading} className="w-full rounded-full bg-[#141210] p-3 text-sm font-semibold text-white disabled:opacity-50">{loading ? "Please wait…" : token ? "Confirm" : "Send email"}</button>

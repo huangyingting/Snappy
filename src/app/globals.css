@@ -44,3 +44,12 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+summary::-webkit-details-marker {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  :where(button, [role="button"], summary, input:not([type="checkbox"]):not([type="radio"]), select) {
+    min-height: 2.75rem;
+  }
+}
